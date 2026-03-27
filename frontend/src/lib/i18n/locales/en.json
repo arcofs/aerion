@@ -939,7 +939,10 @@
     "insertTable": "Insert Table",
     "deleteTable": "Delete Table",
     "htmlMode": "Edit HTML Source",
-    "visualMode": "Visual Editor"
+    "visualMode": "Visual Editor",
+    "imageWidth": "Image width in pixels",
+    "imageWidthPreset": "Set image width to {width}px",
+    "resetImageSize": "Reset image size"
   },
   "attachment": {
     "open": "Open",

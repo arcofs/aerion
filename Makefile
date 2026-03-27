@@ -10,7 +10,8 @@
 
 .PHONY: all build build-linux dev generate clean test lint help \
         install uninstall install-linux uninstall-linux \
-        install-darwin uninstall-darwin build-windows-installer flatpak flatpak-dev
+        install-darwin uninstall-darwin build-windows-installer flatpak flatpak-dev \
+        local-deploy install-linux-built
 
 # Load environment variables from .env files
 # .env.local takes precedence over .env
@@ -72,6 +73,10 @@ flatpak:
 flatpak-dev:
 	@echo "Building Flatpak from local source..."
 	./build/flatpak/build-flatpak.sh
+
+# Build and deploy the current branch locally on Linux
+local-deploy:
+	@./scripts/local-deploy.sh
 
 # Run in development mode with hot reload
 dev:
@@ -165,6 +170,22 @@ install-linux: build
 	@echo "To set Aerion as your default email client:"
 	@echo "  xdg-mime default io.github.hkdb.Aerion.desktop x-scheme-handler/mailto"
 
+# Install an already-built Linux binary without rebuilding
+install-linux-built:
+	@test -x build/bin/aerion || (echo "Missing build/bin/aerion. Run 'make build' first." && exit 1)
+	@echo "Installing prebuilt Aerion to $(DESTDIR)$(PREFIX)..."
+	install -Dm755 build/bin/aerion "$(DESTDIR)$(PREFIX)/bin/aerion"
+	install -Dm644 build/appicon.png "$(DESTDIR)$(PREFIX)/share/icons/hicolor/256x256/apps/io.github.hkdb.Aerion.png"
+	install -Dm644 build/linux/aerion.desktop "$(DESTDIR)$(PREFIX)/share/applications/io.github.hkdb.Aerion.desktop"
+	@echo "Updating icon cache..."
+	-gtk-update-icon-cache -f -t "$(DESTDIR)$(PREFIX)/share/icons/hicolor" 2>/dev/null || true
+	@echo ""
+	@echo "Installation complete!"
+	@echo "You may need to log out and back in for the application to appear in your menu."
+	@echo ""
+	@echo "To set Aerion as your default email client:"
+	@echo "  xdg-mime default io.github.hkdb.Aerion.desktop x-scheme-handler/mailto"
+
 # Uninstall Aerion from Linux
 uninstall-linux:
 	@echo "Uninstalling Aerion from $(DESTDIR)$(PREFIX)..."
@@ -216,6 +237,7 @@ help:
 	@echo "Build Targets:"
 	@echo "  make build        - Build production binary"
 	@echo "  make build-linux  - Build for Linux with production tags"
+	@echo "  make local-deploy - Build and install the current branch locally on Linux"
 	@echo "  make flatpak      - Build Flatpak package (recommended for Linux)"
 	@echo "  make flatpak-dev  - Build Flatpak from local source (for testing)"
 	@echo "  make dev          - Run in development mode with hot reload"

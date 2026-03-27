@@ -110,6 +110,94 @@
     },
   })
 
+  function normalizeStyle(style: string | null | undefined): string | null {
+    if (!style) return null
+    const cleaned = style
+      .split(';')
+      .map(part => part.trim())
+      .filter(Boolean)
+      .join('; ')
+    return cleaned ? `${cleaned};` : null
+  }
+
+  function stripImageDimensionStyles(style: string | null | undefined): string | null {
+    if (!style) return null
+    const filtered = style
+      .split(';')
+      .map(part => part.trim())
+      .filter(part => part && !/^width\s*:/i.test(part) && !/^height\s*:/i.test(part))
+      .join('; ')
+    return filtered ? `${filtered};` : null
+  }
+
+  function buildImageStyle(
+    width: string | null | undefined,
+    height: string | null | undefined,
+    style: string | null | undefined
+  ): string | null {
+    const parts: string[] = []
+    const baseStyle = stripImageDimensionStyles(style)
+    if (baseStyle) {
+      parts.push(baseStyle.replace(/;$/, ''))
+    }
+    if (width) {
+      parts.push(`width: ${width}px`)
+    }
+    if (height) {
+      parts.push(`height: ${height}px`)
+    } else if (width) {
+      parts.push('height: auto')
+    }
+    return parts.length > 0 ? `${parts.join('; ')};` : null
+  }
+
+  function parseImageDimension(value: string | null | undefined): string | null {
+    if (!value) return null
+    const match = value.match(/\d+/)
+    return match ? match[0] : null
+  }
+
+  function getImageDimensionFromElement(element: HTMLElement, property: 'width' | 'height'): string | null {
+    const attrValue = element.getAttribute(property)
+    if (attrValue) {
+      return parseImageDimension(attrValue)
+    }
+    const styleValue = element.style[property]
+    return parseImageDimension(styleValue)
+  }
+
+  const ExtendedImage = Image.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        width: {
+          default: null,
+          parseHTML: (element: HTMLElement) => getImageDimensionFromElement(element, 'width'),
+          renderHTML: (attributes: Record<string, string>) => {
+            if (!attributes.width) return {}
+            return { width: attributes.width }
+          },
+        },
+        height: {
+          default: null,
+          parseHTML: (element: HTMLElement) => getImageDimensionFromElement(element, 'height'),
+          renderHTML: (attributes: Record<string, string>) => {
+            if (!attributes.height) return {}
+            return { height: attributes.height }
+          },
+        },
+        style: {
+          default: null,
+          parseHTML: (element: HTMLElement) => normalizeStyle(element.getAttribute('style')),
+          renderHTML: (attributes: Record<string, string>) => {
+            const style = buildImageStyle(attributes.width, attributes.height, attributes.style)
+            return style ? { style } : {}
+          },
+        },
+      }
+    },
+  })
+
   // Custom extension to make Enter insert <br> instead of new paragraph
   // Optimized with direct ProseMirror transaction for better performance
   const LineBreakOnEnter = Extension.create({
@@ -155,6 +243,15 @@
     onchange?: (html: string) => void
   }
 
+  interface SignatureImageAttrs {
+    src: string
+    alt?: string
+    title?: string
+    width?: string
+    height?: string
+    style?: string
+  }
+
   let { value = '', placeholder = 'Enter your signature...', onchange }: Props = $props()
 
   let editorElement: HTMLElement | undefined = $state()
@@ -187,6 +284,13 @@
   // Current font size
   let currentFontSize = $state<string>('')
   let showFontSizePicker = $state(false)
+
+  // Selected image state
+  let isImageSelected = $state(false)
+  let selectedImageWidth = $state('')
+  const largeImageThresholdPx = 320
+  const defaultLargeImageWidthPx = 240
+  const imageWidthPresets = ['120', '180', '240']
 
   // Font size options
   const fontSizes = ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px']
@@ -225,6 +329,13 @@
     currentFontSize = fontSizeAttr || ''
     // Check if cursor is inside a table
     isInTable = editor.isActive('table')
+    isImageSelected = editor.isActive('image')
+    if (isImageSelected) {
+      const imageAttrs = editor.getAttributes('image')
+      selectedImageWidth = imageAttrs.width || ''
+    } else {
+      selectedImageWidth = ''
+    }
   }
 
   onMount(() => {
@@ -259,7 +370,7 @@
             class: 'text-primary underline',
           },
         }),
-        Image.configure({
+        ExtendedImage.configure({
           inline: true,
           allowBase64: true,
           HTMLAttributes: {
@@ -342,7 +453,8 @@
   async function handleImageFile(file: File) {
     try {
       const dataUrl = await readFileAsDataUrl(file)
-      editor?.chain().focus().setImage({ src: dataUrl }).run()
+      const attrs = await buildInsertedImageAttributes(dataUrl, file.name)
+      editor?.chain().focus().setImage(attrs).run()
     } catch (err) {
       console.error('Failed to insert image:', err)
     }
@@ -355,6 +467,37 @@
       reader.onerror = () => reject(reader.error)
       reader.readAsDataURL(file)
     })
+  }
+
+  function loadImageDimensions(src: string): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+      const image = new window.Image()
+      image.onload = () => resolve({
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      })
+      image.onerror = () => reject(new Error('Failed to load image dimensions'))
+      image.src = src
+    })
+  }
+
+  async function buildInsertedImageAttributes(src: string, alt?: string): Promise<SignatureImageAttrs> {
+    const attrs: SignatureImageAttrs = { src }
+    if (alt) {
+      attrs.alt = alt
+    }
+
+    try {
+      const { width } = await loadImageDimensions(src)
+      if (width > largeImageThresholdPx) {
+        attrs.width = String(defaultLargeImageWidthPx)
+        attrs.style = buildImageStyle(attrs.width, null, null) || ''
+      }
+    } catch (err) {
+      console.warn('Unable to determine image size, inserting original dimensions', err)
+    }
+
+    return attrs
   }
 
   // Toolbar actions
@@ -387,9 +530,12 @@
 
   function insertImageUrl() {
     const url = prompt('Enter image URL:')
-    if (url) {
-      editor?.chain().focus().setImage({ src: url }).run()
-    }
+    if (!url) return
+
+    void (async () => {
+      const attrs = await buildInsertedImageAttributes(url)
+      editor?.chain().focus().setImage(attrs).run()
+    })()
   }
 
   function insertImageFile() {
@@ -521,6 +667,39 @@
   function handleRawHtmlInput(event: Event) {
     rawHtmlContent = (event.target as HTMLTextAreaElement).value
     onchange?.(rawHtmlContent)
+  }
+
+  function applyImageWidth(width: string) {
+    const normalizedWidth = parseImageDimension(width)
+    if (!normalizedWidth || !editor) return
+
+    const imageAttrs = editor.getAttributes('image')
+    editor.chain().focus().updateAttributes('image', {
+      width: normalizedWidth,
+      height: null,
+      style: buildImageStyle(normalizedWidth, null, imageAttrs.style),
+    }).run()
+    selectedImageWidth = normalizedWidth
+  }
+
+  function clearImageSize() {
+    if (!editor) return
+
+    const imageAttrs = editor.getAttributes('image')
+    editor.chain().focus().updateAttributes('image', {
+      width: null,
+      height: null,
+      style: stripImageDimensionStyles(imageAttrs.style),
+    }).run()
+    selectedImageWidth = ''
+  }
+
+  function handleImageWidthInput(event: Event) {
+    selectedImageWidth = (event.target as HTMLInputElement).value
+  }
+
+  function applyTypedImageWidth() {
+    applyImageWidth(selectedImageWidth)
   }
 </script>
 
@@ -736,6 +915,43 @@
       >
         <Icon icon="mdi:image-plus" class="w-4 h-4" />
       </button>
+
+      {#if isImageSelected}
+        <div class="w-px h-4 bg-border mx-1"></div>
+
+        <div class="flex items-center gap-1.5">
+          {#each imageWidthPresets as presetWidth}
+            <button
+              type="button"
+              onclick={() => applyImageWidth(presetWidth)}
+              class="px-2 py-1 text-xs rounded hover:bg-muted transition-colors"
+              class:bg-muted={selectedImageWidth === presetWidth}
+              title={$_('editor.imageWidthPreset', { values: { width: presetWidth } })}
+            >
+              {presetWidth}px
+            </button>
+          {/each}
+          <input
+            type="number"
+            min="1"
+            step="1"
+            class="w-20 h-8 px-2 text-xs bg-background border border-input rounded"
+            value={selectedImageWidth}
+            oninput={handleImageWidthInput}
+            onchange={applyTypedImageWidth}
+            placeholder="px"
+            title={$_('editor.imageWidth')}
+          />
+          <button
+            type="button"
+            onclick={clearImageSize}
+            class="px-2 py-1 text-xs rounded hover:bg-muted transition-colors"
+            title={$_('editor.resetImageSize')}
+          >
+            {$_('editor.reset')}
+          </button>
+        </div>
+      {/if}
     {/if}
 
     <!-- HTML toggle (always visible, pushed to far right) -->

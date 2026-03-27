@@ -121,6 +121,29 @@ make build
 ./build/bin/aerion
 ```
 
+### Local deploy workflow on this machine
+
+For this repository on the user's Linux PC, prefer the one-command local deploy
+path:
+
+```bash
+git checkout arcofs/custom
+make local-deploy
+```
+
+This runs `scripts/local-deploy.sh`, which:
+
+- adds `/home/tom/.local/bin` and `/home/tom/.local/go/bin` to `PATH` for the command
+- builds the current branch
+- installs the binary and desktop assets into `/usr/local`
+- removes the user Flatpak `io.github.hkdb.Aerion` if it is still installed, so
+  the launcher opens the custom local build instead of the public Flatpak
+
+Repeat deployments do not require uninstalling the existing `/usr/local`
+installation first. `make install-linux` overwrites the previous local install
+in place. Only the Flatpak may need removal, and the deploy script handles that
+idempotently.
+
 ## Validation Expectations
 
 Before finalizing meaningful changes, prefer to run:

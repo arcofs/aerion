@@ -114,6 +114,94 @@ const ExtendedTableHeader = TableHeader.extend({
   },
 })
 
+function normalizeStyle(style: string | null | undefined): string | null {
+  if (!style) return null
+  const cleaned = style
+    .split(';')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .join('; ')
+  return cleaned ? `${cleaned};` : null
+}
+
+function stripImageDimensionStyles(style: string | null | undefined): string | null {
+  if (!style) return null
+  const filtered = style
+    .split(';')
+    .map(part => part.trim())
+    .filter(part => part && !/^width\s*:/i.test(part) && !/^height\s*:/i.test(part))
+    .join('; ')
+  return filtered ? `${filtered};` : null
+}
+
+function buildImageStyle(
+  width: string | null | undefined,
+  height: string | null | undefined,
+  style: string | null | undefined
+): string | null {
+  const parts: string[] = []
+  const baseStyle = stripImageDimensionStyles(style)
+  if (baseStyle) {
+    parts.push(baseStyle.replace(/;$/, ''))
+  }
+  if (width) {
+    parts.push(`width: ${width}px`)
+  }
+  if (height) {
+    parts.push(`height: ${height}px`)
+  } else if (width) {
+    parts.push('height: auto')
+  }
+  return parts.length > 0 ? `${parts.join('; ')};` : null
+}
+
+function parseImageDimension(value: string | null | undefined): string | null {
+  if (!value) return null
+  const match = value.match(/\d+/)
+  return match ? match[0] : null
+}
+
+function getImageDimensionFromElement(element: HTMLElement, property: 'width' | 'height'): string | null {
+  const attrValue = element.getAttribute(property)
+  if (attrValue) {
+    return parseImageDimension(attrValue)
+  }
+  const styleValue = element.style[property]
+  return parseImageDimension(styleValue)
+}
+
+const ExtendedImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element: HTMLElement) => getImageDimensionFromElement(element, 'width'),
+        renderHTML: (attributes: Record<string, string>) => {
+          if (!attributes.width) return {}
+          return { width: attributes.width }
+        },
+      },
+      height: {
+        default: null,
+        parseHTML: (element: HTMLElement) => getImageDimensionFromElement(element, 'height'),
+        renderHTML: (attributes: Record<string, string>) => {
+          if (!attributes.height) return {}
+          return { height: attributes.height }
+        },
+      },
+      style: {
+        default: null,
+        parseHTML: (element: HTMLElement) => normalizeStyle(element.getAttribute('style')),
+        renderHTML: (attributes: Record<string, string>) => {
+          const style = buildImageStyle(attributes.width, attributes.height, attributes.style)
+          return style ? { style } : {}
+        },
+      },
+    }
+  },
+})
+
 export interface ComposerEditorHandlers {
   onUpdate?: () => void
   onPasteImage?: (file: File) => void
@@ -150,7 +238,7 @@ export function createComposerEditor(
       Link.configure({
         openOnClick: false,
       }),
-      Image.configure({
+      ExtendedImage.configure({
         inline: true,
         allowBase64: true,
       }),
