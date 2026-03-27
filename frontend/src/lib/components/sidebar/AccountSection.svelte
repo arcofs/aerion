@@ -101,7 +101,7 @@
         class="w-4 h-4 text-muted-foreground"
       />
       <Icon icon="mdi:email-outline" class="w-4 h-4" />
-      <span class="truncate flex-1 text-left">{acc.name}</span>
+      <span class="truncate flex-1 text-left font-bold">{acc.name}</span>
 
       {#if syncing}
         <Icon icon="mdi:sync" class="w-4 h-4 animate-spin text-muted-foreground" />
