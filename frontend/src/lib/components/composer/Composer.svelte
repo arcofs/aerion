@@ -52,7 +52,7 @@
   import Switch from '$lib/components/ui/switch/Switch.svelte'
   import { ConfirmDialog, ThreeOptionDialog } from '$lib/components/ui/confirm-dialog'
   import { addToast } from '$lib/stores/toast'
-  import { getComposerFormat } from '$lib/stores/settings.svelte'
+  import { getComposerFormat, getLanguage } from '$lib/stores/settings.svelte'
   import { _ } from '$lib/i18n'
 
   // Props
@@ -174,6 +174,7 @@
   // Plain text mode toggle (default from user setting, can be toggled per-message)
   let isPlainTextMode = $state(getComposerFormat() === 'plain')
   let plainTextContent = $state('')  // Store plain text when in plain text mode
+  let spellcheckLanguage = $state(getLanguage() || navigator.language || 'en')
 
   // Component refs
   let toolbarRef = $state<{ focus: () => void } | null>(null)
@@ -652,6 +653,7 @@
         onDropFile: handleDroppedFile,
         onDropFilePaths: handleDroppedFilePaths,
         onShiftTab: () => document.getElementById('composer-subject')?.focus(),
+        language: spellcheckLanguage,
       })
     }
 
@@ -1753,6 +1755,8 @@
         <textarea
           bind:value={plainTextContent}
           placeholder={$_('composer.writePlaceholder')}
+          spellcheck="true"
+          lang={spellcheckLanguage}
           class="w-full h-full p-3 bg-transparent resize-none focus:outline-none font-mono text-sm"
           oninput={scheduleDraftSave}
         ></textarea>

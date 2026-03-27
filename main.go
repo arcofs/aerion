@@ -64,6 +64,40 @@ func main() {
 	runMainMode(mailtoData, rawMailtoArg)
 }
 
+func normalizeLocaleTag(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	if idx := strings.IndexAny(value, ".@"); idx >= 0 {
+		value = value[:idx]
+	}
+
+	value = strings.ReplaceAll(value, "_", "-")
+	value = strings.TrimSpace(value)
+	switch strings.ToUpper(value) {
+	case "", "C", "POSIX":
+		return ""
+	default:
+		return value
+	}
+}
+
+func resolveSpellcheckLanguage(dbPath string) string {
+	if lang := normalizeLocaleTag(settings.ReadLanguage(dbPath)); lang != "" {
+		return lang
+	}
+
+	for _, key := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
+		if lang := normalizeLocaleTag(os.Getenv(key)); lang != "" {
+			return lang
+		}
+	}
+
+	return ""
+}
+
 // runMainMode runs the main application window
 func runMainMode(mailtoData *app.MailtoData, rawMailtoArg string) {
 	// Determine activation message: pass raw mailto URL if present, otherwise just "show"
@@ -86,8 +120,10 @@ func runMainMode(mailtoData *app.MailtoData, rawMailtoArg string) {
 
 	// Read native title bar setting before Wails init (Frameless is init-time only)
 	nativeTitleBar := false
+	spellcheckLanguage := ""
 	if paths, err := platform.GetPaths(); err == nil {
 		nativeTitleBar = settings.ReadNativeTitleBar(paths.DatabasePath())
+		spellcheckLanguage = resolveSpellcheckLanguage(paths.DatabasePath())
 	}
 
 	// Create an instance of the app structure
@@ -129,8 +165,10 @@ func runMainMode(mailtoData *app.MailtoData, rawMailtoArg string) {
 			dummyComposerApp, // For binding generation
 		},
 		Linux: &linux.Options{
-			WebviewGpuPolicy: linux.WebviewGpuPolicyOnDemand,
-			ProgramName:      "Aerion",
+			WebviewGpuPolicy:    linux.WebviewGpuPolicyOnDemand,
+			ProgramName:         "Aerion",
+			SpellCheckEnabled:   true,
+			SpellCheckLanguages: []string{spellcheckLanguage},
 		},
 	})
 
@@ -189,8 +227,10 @@ func runComposerMode() {
 
 	// Read native title bar setting before Wails init (Frameless is init-time only)
 	composerNativeTitleBar := false
+	spellcheckLanguage := ""
 	if paths, err := platform.GetPaths(); err == nil {
 		composerNativeTitleBar = settings.ReadNativeTitleBar(paths.DatabasePath())
+		spellcheckLanguage = resolveSpellcheckLanguage(paths.DatabasePath())
 	}
 
 	// Create a custom asset handler that serves composer.html instead of index.html
@@ -218,8 +258,10 @@ func runComposerMode() {
 			composerApp,
 		},
 		Linux: &linux.Options{
-			WebviewGpuPolicy: linux.WebviewGpuPolicyOnDemand,
-			ProgramName:      "Aerion Composer",
+			WebviewGpuPolicy:    linux.WebviewGpuPolicyOnDemand,
+			ProgramName:         "Aerion Composer",
+			SpellCheckEnabled:   true,
+			SpellCheckLanguages: []string{spellcheckLanguage},
 		},
 	})
 

@@ -66,3 +66,4 @@ require (
 )
 
 // replace github.com/wailsapp/wails/v2 v2.11.0 => /home/hkdb/go/pkg/mod
+replace github.com/wailsapp/wails/v2 => github.com/arcofs/wails/v2 v2.0.0-20260327102415-01d9ebdc98f5

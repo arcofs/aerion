@@ -54,14 +54,14 @@ const DefaultMessageListSortOrder = SortOrderNewest
 
 // Theme mode values
 const (
-	ThemeModeSystem      = "system"
-	ThemeModeLight       = "light"        // Default light purple
-	ThemeModeLightBlue   = "light-blue"   // New
+	ThemeModeSystem        = "system"
+	ThemeModeLight         = "light"          // Default light purple
+	ThemeModeLightBlue     = "light-blue"     // New
 	ThemeModeLightOrange   = "light-orange"   // New
 	ThemeModeLightBalanced = "light-balanced" // New
 	ThemeModeDark          = "dark"           // Default dark purple
-	ThemeModeDarkGray     = "dark-gray"     // New
-	ThemeModeDarkBalanced = "dark-balanced" // New
+	ThemeModeDarkGray      = "dark-gray"      // New
+	ThemeModeDarkBalanced  = "dark-balanced"  // New
 )
 
 // DefaultThemeMode is the default theme mode
@@ -469,4 +469,21 @@ func ReadNativeTitleBar(dbPath string) bool {
 		return false
 	}
 	return value == "true"
+}
+
+// ReadLanguage opens the database directly to read the saved UI language.
+// Used before the full app runtime is initialized.
+func ReadLanguage(dbPath string) string {
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return ""
+	}
+	defer db.Close()
+
+	var value string
+	err = db.QueryRow("SELECT value FROM settings WHERE key = ?", KeyLanguage).Scan(&value)
+	if err != nil {
+		return ""
+	}
+	return value
 }
