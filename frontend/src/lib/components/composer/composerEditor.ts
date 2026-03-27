@@ -209,6 +209,7 @@ export interface ComposerEditorHandlers {
   onDropFile?: (file: File) => void
   onDropFilePaths?: (paths: string[]) => void
   onShiftTab?: () => void
+  language?: string
 }
 
 /**
@@ -263,6 +264,7 @@ export function createComposerEditor(
       attributes: {
         class: 'composer-editor focus:outline-none min-h-[200px] p-3',
         spellcheck: 'true',
+        lang: handlers.language || navigator.language || 'en',
       },
       // Handle paste events for images
       handlePaste: (view, event) => {
