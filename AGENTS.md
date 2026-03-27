@@ -161,6 +161,9 @@ commands needed.
 
 When opening upstream PRs for custom features:
 
+- first check the status of `hkdb/aerion#89` and `wailsapp/wails#5087`; if both
+  are merged, the spellcheck feature PR can be opened upstream against
+  `hkdb/aerion`
 - explain the user-visible behavior
 - explain the technical model at a high level
 - include validation steps run locally
