@@ -242,12 +242,20 @@ func (c *Client) SendMail(from string, to []string, msg []byte) error {
 
 	// Set the sender
 	if err := c.client.Mail(from); err != nil {
+		c.log.Error().
+			Err(err).
+			Str("from", from).
+			Msg("SMTP MAIL FROM failed")
 		return fmt.Errorf("failed to set sender: %w", err)
 	}
 
 	// Set recipients
 	for _, recipient := range to {
 		if err := c.client.Rcpt(recipient); err != nil {
+			c.log.Error().
+				Err(err).
+				Str("recipient", recipient).
+				Msg("SMTP RCPT TO failed")
 			return fmt.Errorf("failed to add recipient %s: %w", recipient, err)
 		}
 	}
@@ -255,14 +263,17 @@ func (c *Client) SendMail(from string, to []string, msg []byte) error {
 	// Send the message body
 	w, err := c.client.Data()
 	if err != nil {
+		c.log.Error().Err(err).Msg("SMTP DATA failed")
 		return fmt.Errorf("failed to start data transfer: %w", err)
 	}
 
 	if _, err := io.Copy(w, bytes.NewReader(msg)); err != nil {
+		c.log.Error().Err(err).Msg("SMTP message write failed")
 		return fmt.Errorf("failed to write message: %w", err)
 	}
 
 	if err := w.Close(); err != nil {
+		c.log.Error().Err(err).Msg("SMTP message completion failed")
 		return fmt.Errorf("failed to complete message: %w", err)
 	}
 

@@ -9,6 +9,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
+	"net/mail"
 	"net/textproto"
 	"path/filepath"
 	"strings"
@@ -28,9 +29,11 @@ func (a Address) String() string {
 	if a.Name == "" {
 		return a.Address
 	}
-	// Encode the name if it contains non-ASCII characters
-	encodedName := mime.QEncoding.Encode("utf-8", a.Name)
-	return fmt.Sprintf("%s <%s>", encodedName, a.Address)
+	addr := &mail.Address{
+		Name:    a.Name,
+		Address: a.Address,
+	}
+	return addr.String()
 }
 
 // Attachment represents a file attachment
@@ -65,10 +68,10 @@ type ComposeMessage struct {
 
 	// Options
 	RequestReadReceipt bool `json:"request_read_receipt"`
-	SignMessage         bool `json:"sign_message"`    // S/MIME sign this message
-	EncryptMessage      bool `json:"encrypt_message"` // S/MIME encrypt this message
-	PGPSignMessage      bool `json:"pgp_sign_message"`    // PGP sign this message
-	PGPEncryptMessage   bool `json:"pgp_encrypt_message"` // PGP encrypt this message
+	SignMessage        bool `json:"sign_message"`        // S/MIME sign this message
+	EncryptMessage     bool `json:"encrypt_message"`     // S/MIME encrypt this message
+	PGPSignMessage     bool `json:"pgp_sign_message"`    // PGP sign this message
+	PGPEncryptMessage  bool `json:"pgp_encrypt_message"` // PGP encrypt this message
 }
 
 // AllRecipients returns all recipients (To + Cc + Bcc)

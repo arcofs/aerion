@@ -287,6 +287,11 @@ func (ops *composeOps) sendMessage(ctx context.Context, accountID string, msg sm
 		Str("accountID", accountID).
 		Str("from", msg.From.Address).
 		Int("toCount", len(msg.To)).
+		Int("ccCount", len(msg.Cc)).
+		Int("bccCount", len(msg.Bcc)).
+		Interface("toRecipients", msg.To).
+		Interface("ccRecipients", msg.Cc).
+		Interface("bccRecipients", msg.Bcc).
 		Str("subject", msg.Subject).
 		Msg("Sending message")
 
@@ -304,6 +309,10 @@ func (ops *composeOps) sendMessage(ctx context.Context, accountID string, msg sm
 	if err != nil {
 		return nil, fmt.Errorf("failed to build message: %w", err)
 	}
+	log.Debug().
+		Str("toHeader", extractHeaderValue(rawMsg, "To")).
+		Str("ccHeader", extractHeaderValue(rawMsg, "Cc")).
+		Msg("Built outgoing RFC822 headers")
 
 	fromEmail := msg.From.Address
 
@@ -865,6 +874,30 @@ func parseAddressList(s string) []smtp.Address {
 		result = append(result, smtp.Address{Address: strings.TrimSpace(part)})
 	}
 	return result
+}
+
+func extractHeaderValue(rawMsg []byte, headerName string) string {
+	lines := strings.Split(string(rawMsg), "\r\n")
+	prefix := headerName + ":"
+	var value strings.Builder
+	found := false
+
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, prefix):
+			found = true
+			value.WriteString(strings.TrimSpace(strings.TrimPrefix(line, prefix)))
+		case found && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")):
+			if value.Len() > 0 {
+				value.WriteByte(' ')
+			}
+			value.WriteString(strings.TrimSpace(line))
+		case found:
+			return value.String()
+		}
+	}
+
+	return value.String()
 }
 
 // filterSelfAddresses removes the user's own addresses from a list
