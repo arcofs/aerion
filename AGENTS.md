@@ -17,13 +17,14 @@ Expected git remotes:
 - `upstream` -> `https://github.com/hkdb/aerion.git`
 - `fork` -> `https://github.com/arcofs/aerion.git`
 
-If `origin` still points to upstream, prefer using `fork` and `upstream`
-explicitly in commands to avoid ambiguity.
+This repository is intentionally configured without relying on `origin`.
+Future work should use `fork` and `upstream` explicitly.
 
 ## Branch Strategy
 
 - `main`
   Keep close to upstream. Use it as the clean sync branch.
+  Expected tracking branch: `upstream/main`
 
 - `feature/<name>`
   Use one branch per feature. These branches should be scoped, reviewable, and
@@ -33,10 +34,17 @@ explicitly in commands to avoid ambiguity.
   This is the integration branch for the user's actual personal build. Any
   feature the user wants in their private packaged app must be merged into this
   branch.
+  Expected tracking branch: `fork/arcofs/custom`
 
 Current expected contents of `arcofs/custom`:
 
 - Microsoft shared mailbox support from `feature/microsoft-shared-mailboxes`
+
+Current branch layout:
+
+- `main` tracks `upstream/main`
+- `feature/microsoft-shared-mailboxes` tracks `fork/feature/microsoft-shared-mailboxes`
+- `arcofs/custom` tracks `fork/arcofs/custom`
 
 ## Working Rules For Codex
 
@@ -86,6 +94,16 @@ git push fork arcofs/custom
 If the feature should be proposed upstream, also push the feature branch and open
 a PR from the fork to `hkdb/aerion`.
 
+### Keep the custom branch current
+
+After syncing `main` from upstream, merge it into the custom branch:
+
+```bash
+git checkout arcofs/custom
+git merge main
+git push fork arcofs/custom
+```
+
 ## Building The User's Version
 
 To build the user's packaged version with all custom features, build from:
@@ -125,4 +143,3 @@ When opening upstream PRs for custom features:
 - include validation steps run locally
 - mention limitations and scope
 - avoid mixing unrelated cleanup into feature PRs
-
