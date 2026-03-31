@@ -5,9 +5,9 @@
   import * as Tabs from '$lib/components/ui/tabs'
   import { Button } from '$lib/components/ui/button'
   // @ts-ignore - wailsjs path
-  import { GetReadReceiptResponsePolicy, SetReadReceiptResponsePolicy, GetMarkAsReadDelay, SetMarkAsReadDelay, GetMessageListDensity, SetMessageListDensity, GetThemeMode, SetThemeMode, GetShowTitleBar, SetShowTitleBar, GetRunBackground, SetRunBackground, GetStartHidden, SetStartHidden, GetAutostart, SetAutostart, GetLanguage, SetLanguage, GetComposerMode, SetComposerMode, GetMailtoMode, SetMailtoMode, GetComposerFormat, SetComposerFormat, GetNativeTitleBar, SetNativeTitleBar, GetAlwaysLoadImages, SetAlwaysLoadImages, QuitApp } from '../../../../wailsjs/go/app/App.js'
+import { GetReadReceiptResponsePolicy, SetReadReceiptResponsePolicy, GetMarkAsReadDelay, SetMarkAsReadDelay, GetMessageListDensity, SetMessageListDensity, GetMessageListMode, SetMessageListMode, GetThemeMode, SetThemeMode, GetShowTitleBar, SetShowTitleBar, GetRunBackground, SetRunBackground, GetStartHidden, SetStartHidden, GetAutostart, SetAutostart, GetLanguage, SetLanguage, GetComposerMode, SetComposerMode, GetMailtoMode, SetMailtoMode, GetComposerFormat, SetComposerFormat, GetNativeTitleBar, SetNativeTitleBar, GetAlwaysLoadImages, SetAlwaysLoadImages, QuitApp } from '../../../../wailsjs/go/app/App.js'
   import { addToast } from '$lib/stores/toast'
-  import { setMessageListDensity as updateDensityStore, setThemeMode as updateThemeStore, setShowTitleBar as updateShowTitleBarStore, setRunBackground as updateRunBackgroundStore, setStartHidden as updateStartHiddenStore, setAutostart as updateAutostartStore, setLanguage as updateLanguageStore, setComposerMode as updateComposerModeStore, setMailtoMode as updateMailtoModeStore, setComposerFormat as updateComposerFormatStore, setNativeTitleBar as updateNativeTitleBarStore, setAlwaysLoadImages as updateAlwaysLoadImagesStore, type MessageListDensity, type ThemeMode, type ComposerMode, type ComposerFormat } from '$lib/stores/settings.svelte'
+import { setMessageListDensity as updateDensityStore, setMessageListMode as updateMessageListModeStore, setThemeMode as updateThemeStore, setShowTitleBar as updateShowTitleBarStore, setRunBackground as updateRunBackgroundStore, setStartHidden as updateStartHiddenStore, setAutostart as updateAutostartStore, setLanguage as updateLanguageStore, setComposerMode as updateComposerModeStore, setMailtoMode as updateMailtoModeStore, setComposerFormat as updateComposerFormatStore, setNativeTitleBar as updateNativeTitleBarStore, setAlwaysLoadImages as updateAlwaysLoadImagesStore, type MessageListDensity, type MessageListMode, type ThemeMode, type ComposerMode, type ComposerFormat } from '$lib/stores/settings.svelte'
   import { _ } from '$lib/i18n'
   import ConfirmDialog from '$lib/components/ui/confirm-dialog/ConfirmDialog.svelte'
   import GeneralTab from './GeneralTab.svelte'
@@ -33,6 +33,7 @@
   let readReceiptResponsePolicy = $state<string>('ask')
   let markAsReadDelaySeconds = $state<number>(1) // Display in seconds, store in ms
   let messageListDensity = $state<string>('standard')
+  let messageListMode = $state<string>('conversation')
   let themeMode = $state<string>('system')
   let showTitleBar = $state<boolean>(true)
   let runBackground = $state<boolean>(false)
@@ -65,10 +66,11 @@
   async function loadSettings() {
     loading = true
     try {
-      const [policy, delayMs, density, theme, titleBar, runBg, startHid, autoSt, lang, comp, mail, compFmt, nativeTB, alwaysImages] = await Promise.all([
+      const [policy, delayMs, density, listMode, theme, titleBar, runBg, startHid, autoSt, lang, comp, mail, compFmt, nativeTB, alwaysImages] = await Promise.all([
         GetReadReceiptResponsePolicy(),
         GetMarkAsReadDelay(),
         GetMessageListDensity(),
+        GetMessageListMode(),
         GetThemeMode(),
         GetShowTitleBar(),
         GetRunBackground(),
@@ -85,6 +87,7 @@
       // Convert ms to seconds for display
       markAsReadDelaySeconds = delayMs < 0 ? -1 : delayMs / 1000
       messageListDensity = density
+      messageListMode = listMode || 'conversation'
       themeMode = theme
       showTitleBar = titleBar
       runBackground = runBg
@@ -114,6 +117,7 @@
       await SetReadReceiptResponsePolicy(readReceiptResponsePolicy)
       await SetMarkAsReadDelay(delayMs)
       await SetMessageListDensity(messageListDensity)
+      await SetMessageListMode(messageListMode)
       await SetThemeMode(themeMode)
       await SetShowTitleBar(showTitleBar)
       await SetRunBackground(runBackground)
@@ -129,6 +133,7 @@
       await SetAlwaysLoadImages(alwaysLoadImages)
       // Update the reactive stores so UI updates immediately
       updateDensityStore(messageListDensity as MessageListDensity)
+      updateMessageListModeStore(messageListMode as MessageListMode)
       updateThemeStore(themeMode as ThemeMode)
       updateShowTitleBarStore(showTitleBar)
       updateRunBackgroundStore(runBackground)
@@ -225,6 +230,7 @@
             <GeneralTab
               bind:markAsReadDelaySeconds
               bind:messageListDensity
+              bind:messageListMode
               bind:themeMode
               bind:nativeTitleBar
               bind:showTitleBar
@@ -234,6 +240,7 @@
               bind:language
               onDelayChange={(v) => markAsReadDelaySeconds = v}
               onDensityChange={(v) => messageListDensity = v}
+              onMessageListModeChange={(v) => messageListMode = v}
               onThemeChange={(v) => themeMode = v}
               onTitleBarChange={(ntb, stb) => { nativeTitleBar = ntb; showTitleBar = stb }}
               onRunBackgroundChange={(v) => { runBackground = v; if (!v) startHidden = false }}

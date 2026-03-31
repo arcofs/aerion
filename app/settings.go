@@ -59,6 +59,16 @@ func (a *App) SetMessageListSortOrder(sortOrder string) error {
 	return a.settingsStore.SetMessageListSortOrder(sortOrder)
 }
 
+// GetMessageListMode returns the message list mode setting
+func (a *App) GetMessageListMode() (string, error) {
+	return a.settingsStore.GetMessageListMode()
+}
+
+// SetMessageListMode sets the message list mode
+func (a *App) SetMessageListMode(mode string) error {
+	return a.settingsStore.SetMessageListMode(mode)
+}
+
 // GetThemeMode returns the current theme mode setting
 // Values: "system", "light", "light-blue", "light-orange", "dark", "dark-gray", "dark-balanced"
 func (a *App) GetThemeMode() (string, error) {

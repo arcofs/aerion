@@ -185,7 +185,13 @@ export function GetMessage(arg1:string):Promise<message.Message>;
 
 export function GetMessageCount(arg1:string,arg2:string):Promise<number>;
 
+export function GetMessageHeaderCount(arg1:string,arg2:string,arg3:string):Promise<number>;
+
+export function GetMessageHeaders(arg1:string,arg2:string,arg3:number,arg4:number,arg5:string,arg6:string):Promise<Array<message.MessageHeader>>;
+
 export function GetMessageListDensity():Promise<string>;
+
+export function GetMessageListMode():Promise<string>;
 
 export function GetMessageListSortOrder():Promise<string>;
 
@@ -246,6 +252,10 @@ export function GetUndoDescription():Promise<string>;
 export function GetUnifiedInboxConversations(arg1:number,arg2:number,arg3:string,arg4:string):Promise<Array<message.Conversation>>;
 
 export function GetUnifiedInboxCount(arg1:string):Promise<number>;
+
+export function GetUnifiedInboxMessageHeaderCount(arg1:string):Promise<number>;
+
+export function GetUnifiedInboxMessageHeaders(arg1:number,arg2:number,arg3:string,arg4:string):Promise<Array<message.MessageHeader>>;
 
 export function GetUnifiedInboxUnreadCount():Promise<number>;
 
@@ -424,6 +434,8 @@ export function SetMailtoMode(arg1:string):Promise<void>;
 export function SetMarkAsReadDelay(arg1:number):Promise<void>;
 
 export function SetMessageListDensity(arg1:string):Promise<void>;
+
+export function SetMessageListMode(arg1:string):Promise<void>;
 
 export function SetMessageListSortOrder(arg1:string):Promise<void>;
 

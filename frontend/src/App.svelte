@@ -14,7 +14,7 @@
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { accountStore } from '$lib/stores/accounts.svelte'
   import { addToast } from '$lib/stores/toast'
-  import { loadSettings, getThemeMode, getShowTitleBar, getNativeTitleBar, getComposerMode, getMailtoMode } from '$lib/stores/settings.svelte'
+  import { loadSettings, getThemeMode, getShowTitleBar, getNativeTitleBar, getComposerMode, getMailtoMode, getMessageListMode } from '$lib/stores/settings.svelte'
   import { loadImageAllowlist } from '$lib/stores/imageAllowlist.svelte'
   import { initTheme, applyThemeFromMode, handleSystemThemeEvent, handleMediaQueryChange } from '$lib/stores/theme.svelte'
   import { loadUIState, saveUIState, paneConstraints } from '$lib/stores/uiState.svelte'
@@ -58,6 +58,7 @@
   
   // Selected conversation state
   let selectedThreadId = $state<string | null>(null)
+  let selectedMessageId = $state<string | null>(null)
   let selectedConversationFolderId = $state<string | null>(null)
   let selectedConversationAccountId = $state<string | null>(null)
   
@@ -176,6 +177,7 @@
 
       // Select the conversation
       selectedThreadId = data.threadId
+      selectedMessageId = null
       selectedConversationAccountId = data.accountId
       selectedConversationFolderId = data.folderId
 
@@ -276,6 +278,7 @@
         // Restore conversation selection
         if (uiState.selectedThreadId) {
           selectedThreadId = uiState.selectedThreadId
+          selectedMessageId = null
           selectedConversationAccountId = uiState.selectedConversationAccountId
           selectedConversationFolderId = uiState.selectedConversationFolderId
         }
@@ -333,6 +336,7 @@
     selectedFolderType = folderType
     selectionSource = 'account'
     selectedThreadId = null // Clear conversation selection when changing folders
+    selectedMessageId = null
     selectedConversationFolderId = null
     selectedConversationAccountId = null
     hideSidebar()
@@ -363,6 +367,7 @@
     selectedFolderType = folderType
     selectionSource = 'unified'
     selectedThreadId = null
+    selectedMessageId = null
     selectedConversationFolderId = null
     selectedConversationAccountId = null
     hideSidebar()
@@ -387,6 +392,7 @@
     selectedFolderType = 'inbox'
     selectionSource = 'unified'
     selectedThreadId = null
+    selectedMessageId = null
     selectedConversationFolderId = null
     selectedConversationAccountId = null
     hideSidebar()
@@ -404,8 +410,9 @@
   }
 
   // Handle conversation selection from list
-  function handleConversationSelect(threadId: string, folderId: string, accountId: string) {
+  function handleConversationSelect(threadId: string, messageId: string | null, folderId: string, accountId: string) {
     selectedThreadId = threadId
+    selectedMessageId = messageId
     selectedConversationFolderId = folderId
     selectedConversationAccountId = accountId
     showViewer()
@@ -896,6 +903,7 @@
       } else if (selectedThreadId) {
         // Second: close conversation viewer
         selectedThreadId = null
+        selectedMessageId = null
         selectedConversationFolderId = null
         selectedConversationAccountId = null
       }
@@ -1224,13 +1232,15 @@
       <ConversationViewer
         bind:this={viewerRef}
         threadId={selectedThreadId}
+        selectedMessageId={selectedMessageId}
         folderId={selectedConversationFolderId}
         folderType={selectedFolderType}
         accountId={selectedConversationAccountId}
+        flatConversationView={getMessageListMode() === 'individual'}
         onReply={handleReply}
         onComposeToAddress={handleComposeToAddress}
         onEditDraft={handleEditDraft}
-        onActionComplete={(autoSelectNext) => messageListRef?.handleActionComplete(autoSelectNext)}
+        onActionComplete={(autoSelectNext?: boolean) => messageListRef?.handleActionComplete(autoSelectNext)}
         isFocused={getFocusedPane() === 'viewer'}
         isFlashing={isPaneFlashing('viewer')}
         showBackButton={isResponsive()}
