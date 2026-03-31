@@ -22,9 +22,19 @@ func (a *App) GetMessages(accountID, folderID string, offset, limit int) ([]*mes
 	return a.messageStore.ListByFolder(folderID, offset, limit)
 }
 
+// GetMessageHeaders returns messages for a folder with pagination, sort order, and filters.
+func (a *App) GetMessageHeaders(accountID, folderID string, offset, limit int, sortOrder, filter string) ([]*message.MessageHeader, error) {
+	return a.messageStore.ListMessageHeadersByFolder(folderID, offset, limit, sortOrder, filter)
+}
+
 // GetMessageCount returns the total message count for a folder
 func (a *App) GetMessageCount(accountID, folderID string) (int, error) {
 	return a.messageStore.CountByFolder(folderID)
+}
+
+// GetMessageHeaderCount returns the total filtered message count for a folder.
+func (a *App) GetMessageHeaderCount(accountID, folderID, filter string) (int, error) {
+	return a.messageStore.CountMessageHeadersByFolder(folderID, filter)
 }
 
 // GetMessage returns a full message by ID
@@ -107,9 +117,19 @@ func (a *App) GetUnifiedInboxConversations(offset, limit int, sortOrder, filter 
 	return a.messageStore.ListConversationsUnifiedInbox(offset, limit, sortOrder, filter)
 }
 
+// GetUnifiedInboxMessageHeaders returns individual inbox messages across all accounts.
+func (a *App) GetUnifiedInboxMessageHeaders(offset, limit int, sortOrder, filter string) ([]*message.MessageHeader, error) {
+	return a.messageStore.ListUnifiedInboxMessageHeaders(offset, limit, sortOrder, filter)
+}
+
 // GetUnifiedInboxCount returns the total conversation count across all inbox folders
 func (a *App) GetUnifiedInboxCount(filter string) (int, error) {
 	return a.messageStore.CountConversationsUnifiedInbox(filter)
+}
+
+// GetUnifiedInboxMessageHeaderCount returns the total filtered message count across all inbox folders.
+func (a *App) GetUnifiedInboxMessageHeaderCount(filter string) (int, error) {
+	return a.messageStore.CountUnifiedInboxMessageHeaders(filter)
 }
 
 // GetUnifiedInboxUnreadCount returns the total unread count across all inbox folders

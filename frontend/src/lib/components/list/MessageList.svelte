@@ -6,7 +6,7 @@
   import { cn } from '$lib/utils'
   import { Button } from '$lib/components/ui/button'
   // @ts-ignore - wailsjs bindings
-  import { GetConversations, GetConversationCount, SyncFolder, ForceSyncFolder, CancelFolderSync, SetMessageListSortOrder, GetUnifiedInboxConversations, GetUnifiedInboxCount, SearchAccountConversations, SearchAccountConversationsByParticipant, SearchAccountParticipants, SearchUnifiedInbox, GetAccountParticipantSearchCount, GetAccountSearchCount, GetSearchCountUnifiedInbox, GetFTSIndexStatus, IsFTSIndexing, Trash, DeletePermanently, EmptyTrash, Undo, IMAPSearchFolder, IMAPSearchFolderByParticipant, IMAPSearchAccount, IMAPSearchAccountByParticipant, FetchServerMessage } from '../../../../wailsjs/go/app/App'
+  import { GetConversations, GetConversationCount, GetMessageHeaders, GetMessageHeaderCount, SyncFolder, ForceSyncFolder, CancelFolderSync, SetMessageListSortOrder, GetUnifiedInboxConversations, GetUnifiedInboxCount, GetUnifiedInboxMessageHeaders, GetUnifiedInboxMessageHeaderCount, SearchAccountConversations, SearchAccountConversationsByParticipant, SearchAccountParticipants, SearchUnifiedInbox, GetAccountParticipantSearchCount, GetAccountSearchCount, GetSearchCountUnifiedInbox, GetFTSIndexStatus, IsFTSIndexing, Trash, DeletePermanently, EmptyTrash, Undo, IMAPSearchFolder, IMAPSearchFolderByParticipant, IMAPSearchAccount, IMAPSearchAccountByParticipant, FetchServerMessage } from '../../../../wailsjs/go/app/App'
   import { toasts } from '$lib/stores/toast'
   import { _ } from '$lib/i18n'
   import { ConfirmDialog } from '$lib/components/ui/confirm-dialog'
@@ -14,7 +14,7 @@
   import { message } from '../../../../wailsjs/go/models'
   // @ts-ignore - wailsjs runtime
   import { EventsOn, EventsOff } from '../../../../wailsjs/runtime/runtime'
-  import { getMessageListDensity, getMessageListSortOrder, setMessageListSortOrder } from '$lib/stores/settings.svelte'
+  import { getMessageListDensity, getMessageListMode, getMessageListSortOrder, setMessageListSortOrder } from '$lib/stores/settings.svelte'
   import { accountStore } from '$lib/stores/accounts.svelte'
   import { getLayoutMode, hideViewer } from '$lib/stores/layout.svelte'
   import { isDialogGuardActive } from '$lib/stores/dialogGuard'
@@ -24,7 +24,7 @@
     folderId?: string | null
     folderName?: string
     folderType?: string
-    onConversationSelect?: (threadId: string, folderId: string, accountId: string) => void
+    onConversationSelect?: (threadId: string, messageId: string | null, folderId: string, accountId: string) => void
     onReply?: (mode: 'reply' | 'reply-all' | 'forward', messageId: string) => void
     onRowActionComplete?: () => void
     isFocused?: boolean
@@ -46,6 +46,32 @@
     showFolderToggle = false,
     onToggleSidebar,
   }: Props = $props()
+
+  function rowKey(item: any): string {
+    return item?.rowId || item?.threadId
+  }
+
+  function adaptMessageHeader(header: any): any {
+    return {
+      rowId: header.id,
+      threadId: header.threadId || header.id,
+      targetMessageId: header.id,
+      subject: header.subject,
+      snippet: header.snippet,
+      messageCount: 1,
+      unreadCount: header.isRead ? 0 : 1,
+      hasAttachments: header.hasAttachments,
+      isStarred: header.isStarred,
+      latestDate: header.date,
+      participants: [{ name: header.fromName, email: header.fromEmail }],
+      messageIds: [header.id],
+      accountId: header.accountId,
+      folderId: header.folderId,
+      accountName: header.accountName || '',
+      accountColor: header.accountColor || '',
+      isEncrypted: header.isEncrypted || false,
+    }
+  }
 
   // State
   let conversations = $state<message.Conversation[]>([])
@@ -331,7 +357,7 @@
   const selectedMessageIds = $derived(
     [...new Set(
       [...conversations, ...searchResults]
-        .filter((c) => checkedThreadIds.has(c.threadId))
+        .filter((c) => checkedThreadIds.has(rowKey(c)))
         .flatMap((c: any) => c.messageIds || c.messages?.map((m: any) => m.id) || [])
     )]
   )
@@ -340,12 +366,12 @@
   // Show "Star" if any selected is unstarred, show "Mark as Read" if any selected is unread
   const selectedHasUnstarred = $derived(
     [...conversations, ...searchResults]
-      .filter((c) => checkedThreadIds.has(c.threadId))
+      .filter((c) => checkedThreadIds.has(rowKey(c)))
       .some((c: any) => !c.isStarred)
   )
   const selectedHasUnread = $derived(
     [...conversations, ...searchResults]
-      .filter((c) => checkedThreadIds.has(c.threadId))
+      .filter((c) => checkedThreadIds.has(rowKey(c)))
       .some((c: any) => (c.unreadCount || 0) > 0)
   )
 
@@ -357,6 +383,7 @@
 
   // Check if viewing unified inbox
   const isUnifiedView = $derived(accountId === 'unified' && folderId === 'inbox')
+  const isIndividualMode = $derived(getMessageListMode() === 'individual')
 
   async function loadConversations(customLimit?: number) {
     // For unified view, we don't need accountId/folderId
@@ -376,23 +403,41 @@
     const limit = customLimit ?? PAGE_SIZE
 
     try {
-      const [convList, count] = isUnifiedView
-        ? await Promise.all([
-            GetUnifiedInboxConversations(currentOffset, limit, getMessageListSortOrder(), filterMode),
-            GetUnifiedInboxCount(filterMode),
-          ])
-        : await Promise.all([
-            GetConversations(accountId!, folderId!, currentOffset, limit, getMessageListSortOrder(), filterMode),
-            GetConversationCount(accountId!, folderId!, filterMode),
-          ])
+      const [convList, count] = isIndividualMode
+        ? (
+            isUnifiedView
+              ? await Promise.all([
+                  GetUnifiedInboxMessageHeaders(currentOffset, limit, getMessageListSortOrder(), filterMode),
+                  GetUnifiedInboxMessageHeaderCount(filterMode),
+                ])
+              : await Promise.all([
+                  GetMessageHeaders(accountId!, folderId!, currentOffset, limit, getMessageListSortOrder(), filterMode),
+                  GetMessageHeaderCount(accountId!, folderId!, filterMode),
+                ])
+          )
+        : (
+            isUnifiedView
+              ? await Promise.all([
+                  GetUnifiedInboxConversations(currentOffset, limit, getMessageListSortOrder(), filterMode),
+                  GetUnifiedInboxCount(filterMode),
+                ])
+              : await Promise.all([
+                  GetConversations(accountId!, folderId!, currentOffset, limit, getMessageListSortOrder(), filterMode),
+                  GetConversationCount(accountId!, folderId!, filterMode),
+                ])
+          )
+
+      const loadedRows = isIndividualMode
+        ? ((convList as any[]) || []).map(adaptMessageHeader)
+        : (convList || [])
 
       if (currentOffset !== 0) {
-        conversations = [...conversations, ...(convList || [])]
+        conversations = [...conversations, ...loadedRows]
         totalCount = count
         return
       }
 
-      conversations = convList || []
+      conversations = loadedRows
 
       // Apply any flag changes that arrived while we were loading.
       // This fixes the race where MarkAsRead fires before the new array is ready.
@@ -419,7 +464,7 @@
       if (conversations.length === 0) {
         selectedThreadId = null
       } else if (folderChanged || !selectedThreadId) {
-        selectedThreadId = conversations[0].threadId
+        selectedThreadId = rowKey(conversations[0])
       }
       totalCount = count
     } catch (err) {
@@ -595,7 +640,7 @@
       searchTotalCount = count
       // Auto-select first search result for keyboard navigation
       if (searchResults.length > 0) {
-        selectedThreadId = searchResults[0].threadId
+        selectedThreadId = rowKey(searchResults[0])
       }
     } catch (err) {
       console.error('Search failed:', err)
@@ -730,7 +775,7 @@
       serverSearchCount = items.length
       serverSearchTotalCount = response?.totalCount ?? items.length
       if (items.length > 0) {
-        selectedThreadId = items[0].threadId
+        selectedThreadId = rowKey(items[0])
       }
     } catch (err) {
       console.error('Server search failed:', err)
@@ -743,6 +788,7 @@
   // Map IMAPSearchResult to ConversationRow-compatible shape
   function adaptServerResult(r: any): any {
     return {
+      rowId: r.messageId || `server-uid-${r.uid}`,
       threadId: r.messageId || `server-uid-${r.uid}`,
       subject: r.subject,
       snippet: r.isLocal ? r.snippet : '',
@@ -796,13 +842,14 @@
   }
 
   function selectConversation(threadId: string, index: number, event?: MouseEvent) {
+    const rowId = threadId
     // Shift+click: range select (preserve anchor)
     if (event?.shiftKey) {
       const start = lastClickedIndex !== null ? Math.min(lastClickedIndex, index) : index
       const end = lastClickedIndex !== null ? Math.max(lastClickedIndex, index) : index
       const newChecked = new Set(checkedThreadIds)
       for (let i = start; i <= end; i++) {
-        newChecked.add(activeList[i].threadId)
+        newChecked.add(rowKey(activeList[i]))
       }
       checkedThreadIds = newChecked
       return
@@ -814,14 +861,14 @@
     // Ctrl/Cmd+click: toggle single checkbox without changing selection
     if (event?.ctrlKey || event?.metaKey) {
       const newChecked = new Set(checkedThreadIds)
-      toggleSetEntry(newChecked, threadId)
+      toggleSetEntry(newChecked, rowId)
       checkedThreadIds = newChecked
       return
     }
 
     // Normal click - select for viewing, clear checks
     checkedThreadIds = new Set()
-    selectedThreadId = threadId
+    selectedThreadId = rowId
 
     // For unified view or search, use real folderId and accountId from conversation data
     const conversation = activeList[index] as any
@@ -833,7 +880,12 @@
       fetchAndSelectServerResult(conversation, realFolderId, realAccountId)
       return
     }
-    onConversationSelect?.(threadId, realFolderId, realAccountId)
+    onConversationSelect?.(
+      conversation.threadId,
+      conversation.targetMessageId || conversation.messageIds?.[0] || null,
+      realFolderId,
+      realAccountId,
+    )
   }
 
   // Fetch a non-local server result, save locally, update the result, then select
@@ -846,6 +898,7 @@
         if (idx >= 0) {
           serverSearchResults[idx] = {
             ...serverSearchResults[idx],
+            rowId: msg.id,
             threadId: msg.threadId || msg.id,
             messageIds: [msg.id],
             snippet: msg.snippet || '',
@@ -853,9 +906,9 @@
             _uid: conversation._uid,
           }
           serverSearchResults = serverSearchResults
-          selectedThreadId = serverSearchResults[idx].threadId
+          selectedThreadId = rowKey(serverSearchResults[idx])
         }
-        onConversationSelect?.(msg.threadId || msg.id, realFolderId, realAccountId)
+        onConversationSelect?.(msg.threadId || msg.id, msg.id, realFolderId, realAccountId)
       }
     } catch (err) {
       console.error('Failed to fetch server message:', err)
@@ -864,12 +917,13 @@
   }
 
   function handleCheck(threadId: string, isChecked: boolean, index: number, event?: MouseEvent) {
+    const rowId = threadId
     if (event?.shiftKey && lastClickedIndex !== null) {
       const start = Math.min(lastClickedIndex, index)
       const end = Math.max(lastClickedIndex, index)
       const newChecked = new Set(checkedThreadIds)
       for (let i = start; i <= end; i++) {
-        newChecked.add(activeList[i].threadId)
+        newChecked.add(rowKey(activeList[i]))
       }
       checkedThreadIds = newChecked
       return
@@ -877,7 +931,7 @@
 
     lastClickedIndex = index
     const newChecked = new Set(checkedThreadIds)
-    isChecked ? newChecked.add(threadId) : newChecked.delete(threadId)
+    isChecked ? newChecked.add(rowId) : newChecked.delete(rowId)
     checkedThreadIds = newChecked
   }
 
@@ -905,16 +959,16 @@
             hideViewer()
           }
           if (currentIndex >= 0 && searchResults.length > 0) {
-            const newIndex = Math.min(currentIndex, searchResults.length - 1)
-            const conv = searchResults[newIndex]
-            if (conv) {
-              if (isNarrow) {
-                selectedThreadId = conv.threadId
-              }
-              if (!isNarrow) {
-                selectConversation(conv.threadId, newIndex)
-              }
+          const newIndex = Math.min(currentIndex, searchResults.length - 1)
+          const conv = searchResults[newIndex]
+          if (conv) {
+            if (isNarrow) {
+              selectedThreadId = rowKey(conv)
             }
+            if (!isNarrow) {
+              selectConversation(rowKey(conv), newIndex)
+            }
+          }
           }
         }
       })
@@ -946,10 +1000,10 @@
           const conv = conversations[newIndex]
           if (conv) {
             if (isNarrow) {
-              selectedThreadId = conv.threadId
+              selectedThreadId = rowKey(conv)
             }
             if (!isNarrow) {
-              selectConversation(conv.threadId, newIndex)
+              selectConversation(rowKey(conv), newIndex)
             }
           }
         }
@@ -997,7 +1051,7 @@
   // Get current selected index
   function getSelectedIndex(): number {
     if (!selectedThreadId) return -1
-    return activeList.findIndex(c => c.threadId === selectedThreadId)
+    return activeList.findIndex(c => rowKey(c) === selectedThreadId)
   }
 
   // Select previous message (exposed for keyboard navigation)
@@ -1010,7 +1064,7 @@
 
     const conv = activeList[newIndex]
     if (conv) {
-      selectedThreadId = conv.threadId
+      selectedThreadId = rowKey(conv)
       scrollToIndex(newIndex)
       // Blur any focused element so Enter key triggers openSelected() instead of the button
       ;(document.activeElement as HTMLElement)?.blur?.()
@@ -1034,7 +1088,7 @@
 
     const conv = activeList[newIndex]
     if (conv) {
-      selectedThreadId = conv.threadId
+      selectedThreadId = rowKey(conv)
       scrollToIndex(newIndex)
       // Blur any focused element so Enter key triggers openSelected() instead of the button
       ;(document.activeElement as HTMLElement)?.blur?.()
@@ -1050,14 +1104,19 @@
       const conv = activeList[index] as any
       const realFolderId = (isUnifiedView || isSearchMode) && conv.folderId ? conv.folderId : folderId!
       const realAccountId = (isUnifiedView || isSearchMode) && conv.accountId ? conv.accountId : accountId!
-      onConversationSelect?.(selectedThreadId, realFolderId, realAccountId)
+      onConversationSelect?.(
+        conv.threadId,
+        conv.targetMessageId || conv.messageIds?.[0] || null,
+        realFolderId,
+        realAccountId,
+      )
     }
   }
 
   // Select a specific thread by ID (exposed for notification clicks)
   export function selectThread(threadId: string) {
-    selectedThreadId = threadId
-    const index = activeList.findIndex(c => c.threadId === threadId)
+    const index = activeList.findIndex(c => c.threadId === threadId || rowKey(c) === threadId)
+    selectedThreadId = index >= 0 ? rowKey(activeList[index]) : threadId
     if (index >= 0) {
       scrollToIndex(index)
     }
@@ -1087,7 +1146,7 @@
   // Get message IDs for the keyboard-focused thread (for delete without checking)
   export function getSelectedMessageIds(): string[] {
     if (!selectedThreadId) return []
-    const conv = activeList.find(c => c.threadId === selectedThreadId) as any
+    const conv = activeList.find(c => rowKey(c) === selectedThreadId) as any
     if (!conv) return []
     return conv.messageIds || conv.messages?.map((m: any) => m.id) || []
   }
@@ -1095,7 +1154,7 @@
   // Get account and folder info for the keyboard-focused thread (for unified inbox)
   export function getSelectedConversationInfo(): { accountId: string; folderId: string } | null {
     if (!selectedThreadId) return null
-    const conv = activeList.find(c => c.threadId === selectedThreadId) as any
+    const conv = activeList.find(c => rowKey(c) === selectedThreadId) as any
     if (!conv) return null
 
     const realAccountId = (isUnifiedView || isSearchMode) && conv.accountId ? conv.accountId : accountId
@@ -1108,7 +1167,7 @@
   // Check if the keyboard-focused thread is starred
   export function isSelectedStarred(): boolean {
     if (!selectedThreadId) return false
-    const conv = activeList.find(c => c.threadId === selectedThreadId) as any
+    const conv = activeList.find(c => rowKey(c) === selectedThreadId) as any
     return conv?.isStarred ?? false
   }
 
@@ -1134,12 +1193,12 @@
 
     // Check both current and new message
     const newChecked = new Set(checkedThreadIds)
-    newChecked.add(activeList[currentIndex].threadId)
-    newChecked.add(conv.threadId)
+    newChecked.add(rowKey(activeList[currentIndex]))
+    newChecked.add(rowKey(conv))
     checkedThreadIds = newChecked
 
     // Move focus (but don't open in viewer)
-    selectedThreadId = conv.threadId
+    selectedThreadId = rowKey(conv)
     scrollToIndex(newIndex)
     // Blur any focused element so Enter key triggers openSelected() instead of the button
     ;(document.activeElement as HTMLElement)?.blur?.()
@@ -1158,12 +1217,12 @@
 
     // Check both current and new message
     const newChecked = new Set(checkedThreadIds)
-    newChecked.add(activeList[currentIndex].threadId)
-    newChecked.add(conv.threadId)
+    newChecked.add(rowKey(activeList[currentIndex]))
+    newChecked.add(rowKey(conv))
     checkedThreadIds = newChecked
 
     // Move focus (but don't open in viewer)
-    selectedThreadId = conv.threadId
+    selectedThreadId = rowKey(conv)
     scrollToIndex(newIndex)
     // Blur any focused element so Enter key triggers openSelected() instead of the button
     ;(document.activeElement as HTMLElement)?.blur?.()
@@ -1193,7 +1252,7 @@
   function getEarliestCheckedIndex(): number {
     if (checkedThreadIds.size === 0) return getSelectedIndex()
     for (let i = 0; i < activeList.length; i++) {
-      if (checkedThreadIds.has(activeList[i].threadId)) return i
+      if (checkedThreadIds.has(rowKey(activeList[i]))) return i
     }
     return getSelectedIndex()
   }
@@ -1205,13 +1264,13 @@
   }
 
   export function selectAll() {
-    checkedThreadIds = new Set(activeList.map(c => c.threadId))
+    checkedThreadIds = new Set(activeList.map(c => rowKey(c)))
   }
 
   // Open context menu for the currently selected conversation row
   export function openContextMenu() {
     if (!selectedThreadId || !listContainerRef) return
-    const index = activeList.findIndex(c => c.threadId === selectedThreadId)
+    const index = activeList.findIndex(c => rowKey(c) === selectedThreadId)
     if (index < 0) return
     const rows = listContainerRef.querySelectorAll('[data-conversation-row]')
     const row = rows[index] as HTMLElement | undefined
@@ -1592,11 +1651,12 @@
           {#each serverSearchResults as result, index (result.threadId + '-' + index)}
             {@const resultAccountId = result.accountId || accountId}
             {@const resultFolderId = result.folderId || folderId}
+            {@const resultRowId = rowKey(result)}
             <ConversationRow
               conversation={result}
               density={getMessageListDensity()}
-              selected={selectedThreadId === result.threadId}
-              checked={checkedThreadIds.has(result.threadId)}
+              selected={selectedThreadId === resultRowId}
+              checked={checkedThreadIds.has(resultRowId)}
               accountId={resultAccountId}
               folderId={resultFolderId}
               {folderType}
@@ -1604,8 +1664,8 @@
               selectedIsStarred={!selectedHasUnstarred}
               selectedIsRead={!selectedHasUnread}
               isNonLocal={result._isLocal === false}
-              onSelect={(e) => selectConversation(result.threadId, index, e)}
-              onCheck={(checked, e) => handleCheck(result.threadId, checked, index, e)}
+              onSelect={(e) => selectConversation(resultRowId, index, e)}
+              onCheck={(checked, e) => handleCheck(resultRowId, checked, index, e)}
               onClearSelection={clearSelection}
               onActionComplete={handleActionComplete}
               {onReply}
@@ -1676,11 +1736,12 @@
           {@const resultFolderId = result.folderId || folderId}
           {@const resultAccountColor = result.accountColor || ''}
           {@const resultAccountName = result.accountName || ''}
+          {@const resultRowId = rowKey(result)}
           <ConversationRow
             conversation={result}
             density={getMessageListDensity()}
-            selected={selectedThreadId === result.threadId}
-            checked={checkedThreadIds.has(result.threadId)}
+            selected={selectedThreadId === resultRowId}
+            checked={checkedThreadIds.has(resultRowId)}
             accountId={(isUnifiedView || isSearchMode) ? resultAccountId : accountId!}
             folderId={(isUnifiedView || isSearchMode) ? resultFolderId : folderId!}
             {folderType}
@@ -1695,8 +1756,8 @@
             highlightedFromName={result.highlightedFromName}
             searchFolderName={result.folderName}
             searchFolderType={result.folderType}
-            onSelect={(e) => selectConversation(result.threadId, index, e)}
-            onCheck={(checked, e) => handleCheck(result.threadId, checked, index, e)}
+            onSelect={(e) => selectConversation(resultRowId, index, e)}
+            onCheck={(checked, e) => handleCheck(resultRowId, checked, index, e)}
             onClearSelection={clearSelection}
             onActionComplete={handleActionComplete}
             {onReply}
@@ -1741,16 +1802,17 @@
         </button>
       </div>
     {:else}
-      {#each conversations as conv, index (conv.threadId)}
+      {#each conversations as conv, index (rowKey(conv))}
         {@const convAccountId = (conv as any).accountId || accountId}
         {@const convFolderId = (conv as any).folderId || folderId}
         {@const convAccountColor = (conv as any).accountColor || ''}
         {@const convAccountName = (conv as any).accountName || ''}
+        {@const convRowId = rowKey(conv)}
         <ConversationRow
           conversation={conv}
           density={getMessageListDensity()}
-          selected={selectedThreadId === conv.threadId}
-          checked={checkedThreadIds.has(conv.threadId)}
+          selected={selectedThreadId === convRowId}
+          checked={checkedThreadIds.has(convRowId)}
           accountId={isUnifiedView ? convAccountId : accountId!}
           folderId={isUnifiedView ? convFolderId : folderId!}
           {folderType}
@@ -1760,8 +1822,8 @@
           showAccountIndicator={isUnifiedView}
           accountColor={convAccountColor}
           accountName={convAccountName}
-          onSelect={(e) => selectConversation(conv.threadId, index, e)}
-          onCheck={(checked, e) => handleCheck(conv.threadId, checked, index, e)}
+          onSelect={(e) => selectConversation(convRowId, index, e)}
+          onCheck={(checked, e) => handleCheck(convRowId, checked, index, e)}
           onClearSelection={clearSelection}
           onActionComplete={handleActionComplete}
           {onReply}

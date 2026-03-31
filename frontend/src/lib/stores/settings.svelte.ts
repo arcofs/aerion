@@ -2,7 +2,7 @@
 // Provides reactive state for application settings
 
 // @ts-ignore - wailsjs path
-import { GetMessageListDensity, GetMessageListSortOrder, GetThemeMode, GetShowTitleBar, GetRunBackground, GetStartHidden, GetAutostart, GetLanguage, GetComposerMode, GetMailtoMode, GetComposerFormat, GetNativeTitleBar, GetAlwaysLoadImages } from '../../../wailsjs/go/app/App'
+import { GetMessageListDensity, GetMessageListSortOrder, GetMessageListMode, GetThemeMode, GetShowTitleBar, GetRunBackground, GetStartHidden, GetAutostart, GetLanguage, GetComposerMode, GetMailtoMode, GetComposerFormat, GetNativeTitleBar, GetAlwaysLoadImages } from '../../../wailsjs/go/app/App'
 import { setLocale as setI18nLocale } from '$lib/i18n'
 import { loadDateFnsLocale, getDateFnsLocale } from '$lib/i18n/dateFnsLocale'
 import type { Locale } from 'date-fns'
@@ -11,6 +11,7 @@ export type ComposerMode = 'inline' | 'detached'
 export type ComposerFormat = 'rich' | 'plain'
 export type MessageListDensity = 'micro' | 'compact' | 'standard' | 'large'
 export type MessageListSortOrder = 'newest' | 'oldest'
+export type MessageListMode = 'conversation' | 'individual'
 export type ThemeMode =
   | 'system'
   | 'light' | 'light-blue' | 'light-orange' | 'light-balanced'
@@ -19,6 +20,7 @@ export type ThemeMode =
 // Module-level reactive state
 let messageListDensity = $state<MessageListDensity>('standard')
 let messageListSortOrder = $state<MessageListSortOrder>('newest')
+let messageListMode = $state<MessageListMode>('conversation')
 let themeMode = $state<ThemeMode>('system')
 let showTitleBar = $state<boolean>(true)
 let runBackground = $state<boolean>(false)
@@ -42,6 +44,10 @@ export function getMessageListSortOrder(): MessageListSortOrder {
 
 export function getThemeMode(): ThemeMode {
   return themeMode
+}
+
+export function getMessageListMode(): MessageListMode {
+  return messageListMode
 }
 
 export function getShowTitleBar(): boolean {
@@ -101,6 +107,10 @@ export function setThemeMode(mode: ThemeMode) {
   themeMode = mode
 }
 
+export function setMessageListMode(mode: MessageListMode) {
+  messageListMode = mode
+}
+
 export function setShowTitleBar(show: boolean) {
   showTitleBar = show
 }
@@ -148,9 +158,10 @@ export function setAlwaysLoadImages(v: boolean) {
 // Load settings from backend (call on app startup)
 export async function loadSettings(): Promise<ThemeMode> {
   try {
-    const [density, sortOrder, theme, titleBar, runBg, startHid, autoSt, lang, compMode, mailMode, compFormat, nativeTB, alwaysImages] = await Promise.all([
+    const [density, sortOrder, listMode, theme, titleBar, runBg, startHid, autoSt, lang, compMode, mailMode, compFormat, nativeTB, alwaysImages] = await Promise.all([
       GetMessageListDensity(),
       GetMessageListSortOrder(),
+      GetMessageListMode(),
       GetThemeMode(),
       GetShowTitleBar(),
       GetRunBackground(),
@@ -165,6 +176,7 @@ export async function loadSettings(): Promise<ThemeMode> {
     ])
     messageListDensity = (density as MessageListDensity) || 'standard'
     messageListSortOrder = (sortOrder as MessageListSortOrder) || 'newest'
+    messageListMode = (listMode as MessageListMode) || 'conversation'
     themeMode = (theme as ThemeMode) || 'system'
     showTitleBar = titleBar ?? true // Default to true
     runBackground = runBg ?? false

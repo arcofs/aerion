@@ -10,6 +10,7 @@
   interface Props {
     markAsReadDelaySeconds: number
     messageListDensity: string
+    messageListMode: string
     themeMode: string
     nativeTitleBar: boolean
     showTitleBar: boolean
@@ -19,6 +20,7 @@
     language: string
     onDelayChange: (value: number) => void
     onDensityChange: (value: string) => void
+    onMessageListModeChange: (value: string) => void
     onThemeChange: (value: string) => void
     onTitleBarChange: (nativeTitleBar: boolean, showTitleBar: boolean) => void
     onRunBackgroundChange: (value: boolean) => void
@@ -30,6 +32,7 @@
   let {
     markAsReadDelaySeconds = $bindable(),
     messageListDensity = $bindable(),
+    messageListMode = $bindable(),
     themeMode = $bindable(),
     nativeTitleBar = $bindable(),
     showTitleBar = $bindable(),
@@ -39,6 +42,7 @@
     language = $bindable(),
     onDelayChange,
     onDensityChange,
+    onMessageListModeChange,
     onThemeChange,
     onTitleBarChange,
     onRunBackgroundChange,
@@ -53,6 +57,11 @@
     { value: 'compact', label: $_('settingsGeneral.densityCompact') },
     { value: 'standard', label: $_('settingsGeneral.densityStandard') },
     { value: 'large', label: $_('settingsGeneral.densityLarge') },
+  ])
+
+  const messageListModeOptions = $derived([
+    { value: 'conversation', label: $_('settingsGeneral.messageListModeConversation') },
+    { value: 'individual', label: $_('settingsGeneral.messageListModeIndividual') },
   ])
 
   // Title bar options
@@ -86,6 +95,10 @@
     return themeModeOptions.find(opt => opt.value === value)?.label || value
   }
 
+  function getMessageListModeLabel(value: string): string {
+    return messageListModeOptions.find(opt => opt.value === value)?.label || value
+  }
+
   // Language picker
   function getLanguageLabel(code: string): string {
     return supportedLocales.find(l => l.code === code)?.name || code || 'English'
@@ -99,6 +112,11 @@
   function handleThemeChange(value: string) {
     themeMode = value
     onThemeChange?.(value)
+  }
+
+  function handleMessageListModeChange(value: string) {
+    messageListMode = value
+    onMessageListModeChange?.(value)
   }
 
   function handleTitleBarChange(value: string) {
@@ -242,6 +260,25 @@
         {$_('settingsGeneral.messageListDensityHelp')}
       </p>
     </div>
+
+    <div class="space-y-2">
+      <Label>{$_('settingsGeneral.messageListMode')}</Label>
+      <Select.Root value={messageListMode} onValueChange={handleMessageListModeChange}>
+        <Select.Trigger>
+          <Select.Value placeholder={$_('settingsGeneral.selectMessageListMode')}>
+            {getMessageListModeLabel(messageListMode)}
+          </Select.Value>
+        </Select.Trigger>
+        <Select.Content>
+          {#each messageListModeOptions as opt (opt.value)}
+            <Select.Item value={opt.value} label={opt.label} />
+          {/each}
+        </Select.Content>
+      </Select.Root>
+      <p class="text-xs text-muted-foreground">
+        {$_('settingsGeneral.messageListModeHelp')}
+      </p>
+    </div>
   </div>
 
   <!-- Divider -->
@@ -346,4 +383,3 @@
   </div>
 
 </div>
-

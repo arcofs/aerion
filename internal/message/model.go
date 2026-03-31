@@ -88,6 +88,7 @@ type MessageHeader struct {
 	AccountID string `json:"accountId"`
 	FolderID  string `json:"folderId"`
 	UID       uint32 `json:"uid"`
+	ThreadID  string `json:"threadId,omitempty"`
 
 	Subject   string    `json:"subject"`
 	FromName  string    `json:"fromName"`
@@ -98,6 +99,10 @@ type MessageHeader struct {
 	IsRead         bool `json:"isRead"`
 	IsStarred      bool `json:"isStarred"`
 	HasAttachments bool `json:"hasAttachments"`
+	IsEncrypted    bool `json:"isEncrypted"`
+
+	AccountName  string `json:"accountName,omitempty"`
+	AccountColor string `json:"accountColor,omitempty"`
 }
 
 // ToHeader returns a MessageHeader from a Message

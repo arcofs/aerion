@@ -338,8 +338,20 @@ export function GetMessageCount(arg1, arg2) {
   return window['go']['app']['App']['GetMessageCount'](arg1, arg2);
 }
 
+export function GetMessageHeaderCount(arg1, arg2, arg3) {
+  return window['go']['app']['App']['GetMessageHeaderCount'](arg1, arg2, arg3);
+}
+
+export function GetMessageHeaders(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['app']['App']['GetMessageHeaders'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
 export function GetMessageListDensity() {
   return window['go']['app']['App']['GetMessageListDensity']();
+}
+
+export function GetMessageListMode() {
+  return window['go']['app']['App']['GetMessageListMode']();
 }
 
 export function GetMessageListSortOrder() {
@@ -460,6 +472,14 @@ export function GetUnifiedInboxConversations(arg1, arg2, arg3, arg4) {
 
 export function GetUnifiedInboxCount(arg1) {
   return window['go']['app']['App']['GetUnifiedInboxCount'](arg1);
+}
+
+export function GetUnifiedInboxMessageHeaderCount(arg1) {
+  return window['go']['app']['App']['GetUnifiedInboxMessageHeaderCount'](arg1);
+}
+
+export function GetUnifiedInboxMessageHeaders(arg1, arg2, arg3, arg4) {
+  return window['go']['app']['App']['GetUnifiedInboxMessageHeaders'](arg1, arg2, arg3, arg4);
 }
 
 export function GetUnifiedInboxUnreadCount() {
@@ -816,6 +836,10 @@ export function SetMarkAsReadDelay(arg1) {
 
 export function SetMessageListDensity(arg1) {
   return window['go']['app']['App']['SetMessageListDensity'](arg1);
+}
+
+export function SetMessageListMode(arg1) {
+  return window['go']['app']['App']['SetMessageListMode'](arg1);
 }
 
 export function SetMessageListSortOrder(arg1) {

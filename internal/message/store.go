@@ -143,12 +143,24 @@ func addParticipantSuggestion(results map[string]*ParticipantSuggestion, addr Ad
 
 // ListByFolder returns message headers for a folder with pagination
 func (s *Store) ListByFolder(folderID string, offset, limit int) ([]*MessageHeader, error) {
+	return s.ListMessageHeadersByFolder(folderID, offset, limit, "newest", "")
+}
+
+// ListMessageHeadersByFolder returns individual messages for a folder with pagination.
+func (s *Store) ListMessageHeadersByFolder(folderID string, offset, limit int, sortOrder, filter string) ([]*MessageHeader, error) {
+	orderClause := "ORDER BY date DESC"
+	if sortOrder == "oldest" {
+		orderClause = "ORDER BY date ASC"
+	}
+
 	query := `
-		SELECT id, account_id, folder_id, uid, subject, from_name, from_email,
-		       date, snippet, is_read, is_starred, has_attachments
+		SELECT id, account_id, folder_id, uid, COALESCE(thread_id, message_id, id) as thread_id,
+		       subject, from_name, from_email, date, snippet, is_read, is_starred, has_attachments,
+		       CASE WHEN smime_encrypted = 1 OR pgp_encrypted = 1 THEN 1 ELSE 0 END as is_encrypted
 		FROM messages
 		WHERE folder_id = ?
-		ORDER BY date DESC
+	` + filterWhereClause(filter, "") + `
+		` + orderClause + `
 		LIMIT ? OFFSET ?
 	`
 
@@ -166,12 +178,76 @@ func (s *Store) ListByFolder(folderID string, offset, limit int) ([]*MessageHead
 
 		err := rows.Scan(
 			&m.ID, &m.AccountID, &m.FolderID, &m.UID,
+			&m.ThreadID,
 			&m.Subject, &m.FromName, &m.FromEmail,
 			&dateStr, &snippet,
-			&m.IsRead, &m.IsStarred, &m.HasAttachments,
+			&m.IsRead, &m.IsStarred, &m.HasAttachments, &m.IsEncrypted,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+
+		if dateStr.Valid && dateStr.String != "" {
+			m.Date = parseTimeString(dateStr.String)
+		}
+		if snippet.Valid {
+			m.Snippet = snippet.String
+		}
+
+		messages = append(messages, m)
+	}
+
+	return messages, nil
+}
+
+// ListUnifiedInboxMessageHeaders returns individual inbox messages across all enabled accounts.
+func (s *Store) ListUnifiedInboxMessageHeaders(offset, limit int, sortOrder, filter string) ([]*MessageHeader, error) {
+	orderClause := "ORDER BY m.date DESC"
+	if sortOrder == "oldest" {
+		orderClause = "ORDER BY m.date ASC"
+	}
+
+	filterCond := filterWhereClause(filter, "m.")
+	wherePart := "WHERE f.folder_type = 'inbox' AND a.enabled = 1"
+	if filterCond != "" {
+		wherePart += " " + filterCond
+	}
+
+	query := `
+		SELECT m.id, m.account_id, m.folder_id, m.uid, COALESCE(m.thread_id, m.message_id, m.id) as thread_id,
+		       m.subject, m.from_name, m.from_email, m.date, m.snippet, m.is_read, m.is_starred,
+		       m.has_attachments,
+		       CASE WHEN m.smime_encrypted = 1 OR m.pgp_encrypted = 1 THEN 1 ELSE 0 END as is_encrypted,
+		       a.name as account_name, a.color as account_color
+		FROM messages m
+		INNER JOIN folders f ON m.folder_id = f.id
+		INNER JOIN accounts a ON f.account_id = a.id
+		` + wherePart + `
+		` + orderClause + `
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.Query(query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query unified inbox messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []*MessageHeader
+	for rows.Next() {
+		m := &MessageHeader{}
+		var dateStr sql.NullString
+		var snippet sql.NullString
+
+		err := rows.Scan(
+			&m.ID, &m.AccountID, &m.FolderID, &m.UID, &m.ThreadID,
+			&m.Subject, &m.FromName, &m.FromEmail,
+			&dateStr, &snippet,
+			&m.IsRead, &m.IsStarred, &m.HasAttachments, &m.IsEncrypted,
+			&m.AccountName, &m.AccountColor,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan unified inbox message: %w", err)
 		}
 
 		if dateStr.Valid && dateStr.String != "" {
@@ -1138,6 +1214,45 @@ func (s *Store) CountByFolder(folderID string) (int, error) {
 	return count, nil
 }
 
+// CountMessageHeadersByFolder returns the total filtered message count for a folder.
+func (s *Store) CountMessageHeadersByFolder(folderID, filter string) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM messages
+		WHERE folder_id = ?
+	` + filterWhereClause(filter, "")
+
+	var count int
+	err := s.db.QueryRow(query, folderID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count messages: %w", err)
+	}
+	return count, nil
+}
+
+// CountUnifiedInboxMessageHeaders returns the total filtered message count across all inbox folders.
+func (s *Store) CountUnifiedInboxMessageHeaders(filter string) (int, error) {
+	filterCond := filterWhereClause(filter, "m.")
+	wherePart := "WHERE f.folder_type = 'inbox' AND a.enabled = 1"
+	if filterCond != "" {
+		wherePart += " " + filterCond
+	}
+
+	query := `
+		SELECT COUNT(*)
+		FROM messages m
+		INNER JOIN folders f ON m.folder_id = f.id
+		INNER JOIN accounts a ON f.account_id = a.id
+		` + wherePart
+
+	var count int
+	err := s.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count unified inbox messages: %w", err)
+	}
+	return count, nil
+}
+
 // DeleteOlderThan deletes messages older than the specified time for an account
 // Returns the number of messages deleted
 func (s *Store) DeleteOlderThan(accountID string, before time.Time) (int, error) {
@@ -1565,6 +1680,7 @@ func (s *Store) GetConversation(threadID, folderID string) (*Conversation, error
 			REPLACE(REPLACE(COALESCE(m.thread_id, m.id), '<', ''), '>', '') = ?
 			OR REPLACE(REPLACE(m.message_id, '<', ''), '>', '') = ?
 			OR REPLACE(REPLACE(m.in_reply_to, '<', ''), '>', '') = ?
+			OR m.id = ?
 		)
 		%s %s
 	`, trashFilter, folderFilter)
@@ -1572,7 +1688,7 @@ func (s *Store) GetConversation(threadID, folderID string) (*Conversation, error
 	c := &Conversation{ThreadID: threadID}
 	var latestDateStr sql.NullString
 
-	err = s.db.QueryRow(summaryQuery, accountID, normalizedThreadID, normalizedThreadID, normalizedThreadID, folderID).Scan(
+	err = s.db.QueryRow(summaryQuery, accountID, normalizedThreadID, normalizedThreadID, normalizedThreadID, threadID, folderID).Scan(
 		&c.Subject,
 		&c.Snippet,
 		&c.MessageCount,
@@ -1611,12 +1727,13 @@ func (s *Store) GetConversation(threadID, folderID string) (*Conversation, error
 			REPLACE(REPLACE(COALESCE(m.thread_id, m.id), '<', ''), '>', '') = ?
 			OR REPLACE(REPLACE(m.message_id, '<', ''), '>', '') = ?
 			OR REPLACE(REPLACE(m.in_reply_to, '<', ''), '>', '') = ?
+			OR m.id = ?
 		)
 		%s %s
 		ORDER BY m.date ASC
 	`, trashFilter, folderFilter)
 
-	rows, err := s.db.Query(messagesQuery, accountID, normalizedThreadID, normalizedThreadID, normalizedThreadID, folderID)
+	rows, err := s.db.Query(messagesQuery, accountID, normalizedThreadID, normalizedThreadID, normalizedThreadID, threadID, folderID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query thread messages: %w", err)
 	}

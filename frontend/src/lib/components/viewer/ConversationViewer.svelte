@@ -20,9 +20,11 @@
 
   interface Props {
     threadId?: string | null
+    selectedMessageId?: string | null
     folderId?: string | null
     folderType?: string | null
     accountId?: string | null
+    flatConversationView?: boolean
     onReply?: (mode: 'reply' | 'reply-all' | 'forward', messageId: string) => void
     onComposeToAddress?: (toAddress: string) => void
     onEditDraft?: (draftId: string) => void
@@ -35,9 +37,11 @@
 
   let {
     threadId = null,
+    selectedMessageId = null,
     folderId = null,
     folderType = null,
     accountId = null,
+    flatConversationView = false,
     onReply,
     onComposeToAddress,
     onEditDraft,
@@ -120,6 +124,53 @@
 
   // Event listener cleanup functions
   let cleanupFunctions: (() => void)[] = []
+
+  const renderedMessages = $derived.by(() => {
+    const messages = conversation?.messages || []
+    if (!flatConversationView || !selectedMessageId || messages.length === 0) {
+      return messages
+    }
+
+    const selectedIndex = messages.findIndex((m) => m.id === selectedMessageId)
+    if (selectedIndex <= 0) {
+      return messages
+    }
+
+    return [...messages.slice(selectedIndex), ...messages.slice(0, selectedIndex)]
+  })
+
+  function getExpandedMessageSet(messages: messageModels.Message[]): Set<string> {
+    if (flatConversationView) {
+      return new Set(messages.map((m) => m.id))
+    }
+
+    const expanded = new Set<string>()
+    messages.forEach((m, i) => {
+      if (!m.isRead || i === messages.length - 1) {
+        expanded.add(m.id)
+      }
+    })
+    return expanded
+  }
+
+  async function focusSelectedMessage(behavior: ScrollBehavior = 'smooth') {
+    await tick()
+
+    const targetId = selectedMessageId || getLastMessageId()
+    if (!targetId) return
+
+    const messageEl = document.querySelector(`[data-message-id="${targetId}"]`) as HTMLElement | null
+    if (!messageEl) {
+      if (!selectedMessageId && contentContainerRef) {
+        contentContainerRef.scrollTop = contentContainerRef.scrollHeight
+      }
+      return
+    }
+
+    focusedMessageId = targetId
+    messageEl.focus()
+    messageEl.scrollIntoView({ block: 'nearest', behavior })
+  }
 
   // Load settings and set up event listeners on mount
   onMount(async () => {
@@ -354,6 +405,11 @@
     }
   })
 
+  $effect(() => {
+    if (!threadId || !selectedMessageId || !conversation?.messages?.some((m) => m.id === selectedMessageId)) return
+    focusSelectedMessage()
+  })
+
   // Debounced refresh: coalesces rapid sync events (e.g. folder:synced + messages:updated)
   // into a single refreshConversation call, reducing Wails bridge pressure.
   // Defers if a dialog guard is active (e.g. folder picker open).
@@ -398,13 +454,7 @@
 
       // Expand any new unread messages
       if (conversation.messages) {
-        const newExpanded = new Set(expandedMessages)
-        conversation.messages.forEach((m, i) => {
-          if (!m.isRead || i === conversation!.messages!.length - 1) {
-            newExpanded.add(m.id)
-          }
-        })
-        expandedMessages = newExpanded
+        expandedMessages = getExpandedMessageSet(conversation.messages)
         scheduleMarkAsRead(tid, conversation.messages)
         processSMIMEMessages(conversation.messages)
         processPGPMessages(conversation.messages)
@@ -439,14 +489,7 @@
 
       // Auto-expand unread messages and the last message
       if (conversation?.messages) {
-        const newExpanded = new Set<string>()
-        conversation.messages.forEach((m, i) => {
-          // Expand if unread or if it's the last message
-          if (!m.isRead || i === conversation!.messages!.length - 1) {
-            newExpanded.add(m.id)
-          }
-        })
-        expandedMessages = newExpanded
+        expandedMessages = getExpandedMessageSet(conversation.messages)
 
         // Schedule auto-mark-as-read for unread messages
         scheduleMarkAsRead(tid, conversation.messages)
@@ -462,11 +505,7 @@
       error = $_('viewer.failedToLoad')
     } finally {
       loading = false
-      // Scroll to bottom to show the latest message
-      await tick()
-      if (contentContainerRef) {
-        contentContainerRef.scrollTop = contentContainerRef.scrollHeight
-      }
+      await focusSelectedMessage(selectedMessageId ? 'auto' : 'smooth')
     }
   }
 
@@ -577,6 +616,7 @@
   }
 
   function toggleMessage(messageId: string) {
+    if (flatConversationView) return
     const newSet = new Set(expandedMessages)
     const wasExpanded = newSet.has(messageId)
     
@@ -1228,7 +1268,7 @@
       </div>
 
       <div class="flex items-center gap-2">
-        {#if conversation.messages && conversation.messages.length > 1}
+        {#if !flatConversationView && conversation.messages && conversation.messages.length > 1}
           <button 
             class="p-2 rounded-md hover:bg-muted transition-colors" 
             title={$_('viewer.expandAll')}
@@ -1272,9 +1312,8 @@
         <!-- Stacked Messages -->
         {#if conversation.messages}
           <div class="space-y-4">
-            {#each conversation.messages as msg, index (msg.id)}
+            {#each renderedMessages as msg, index (msg.id)}
               {@const isExpanded = expandedMessages.has(msg.id)}
-              {@const isLast = index === conversation.messages.length - 1}
 
               <!-- Wrap each message in its own context menu -->
               <MessageContextMenu
@@ -1288,20 +1327,21 @@
                 {onReply}
               >
                 <div
-                  class="border rounded-lg overflow-hidden transition-all {focusedMessageId === msg.id ? 'border-primary ring-2 ring-primary/20' : 'border-border'}"
+                  class="border rounded-lg overflow-hidden transition-all {focusedMessageId === msg.id && !flatConversationView ? 'border-primary ring-2 ring-primary/20' : 'border-border'}"
                   data-message-id={msg.id}
                   tabindex="-1"
                   onfocus={() => focusedMessageId = msg.id}
                   onblur={() => { if (focusedMessageId === msg.id) focusedMessageId = null }}
                 >
-                <!-- Message Header (always visible, clickable to expand/collapse) -->
+                <!-- Message Header -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                 <div
-                  class="w-full flex items-start gap-3 p-4 text-left hover:bg-muted/50 transition-colors cursor-pointer {!isExpanded ? 'bg-muted/30' : ''}"
+                  class="w-full flex items-start gap-3 p-4 text-left transition-colors {flatConversationView ? 'bg-background' : `hover:bg-muted/50 cursor-pointer ${!isExpanded ? 'bg-muted/30' : ''}`}"
                   onclick={() => toggleMessage(msg.id)}
-                  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleMessage(msg.id) }}
-                  role="button"
-                  tabindex="0"
+                  onkeydown={(e) => { if (!flatConversationView && (e.key === 'Enter' || e.key === ' ')) toggleMessage(msg.id) }}
+                  role={flatConversationView ? undefined : 'button'}
+                  tabindex={flatConversationView ? undefined : 0}
                 >
                   <!-- Avatar -->
                   <div
@@ -1398,7 +1438,7 @@
                       {/if}
                     {/if}
                     
-                    {#if !isExpanded}
+                    {#if !flatConversationView && !isExpanded}
                       <!-- Show snippet when collapsed -->
                       <p class="text-sm text-muted-foreground truncate mt-1">
                         {msg.snippet || ''}
@@ -1406,7 +1446,7 @@
                     {/if}
                   </div>
                   
-                  <!-- Date, edit button (drafts), and expand icon -->
+                  <!-- Date and edit button (drafts) -->
                   <div class="flex items-center gap-2 flex-shrink-0">
                     <span class="text-sm text-muted-foreground">
                       {formatDate(msg.date)}
@@ -1420,15 +1460,17 @@
                         <Icon icon="mdi:pencil" class="w-4 h-4 text-muted-foreground" />
                       </button>
                     {/if}
-                    <Icon
-                      icon={isExpanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-                      class="w-5 h-5 text-muted-foreground"
-                    />
+                    {#if !flatConversationView}
+                      <Icon
+                        icon={isExpanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
+                        class="w-5 h-5 text-muted-foreground"
+                      />
+                    {/if}
                   </div>
                 </div>
                 
                 <!-- Message Body (visible when expanded) -->
-                {#if isExpanded}
+                {#if flatConversationView || isExpanded}
                   <div class="px-4 pb-4 pt-0">
                     <div class="ml-13 pl-3 border-l-2 border-border">
                       <!-- Read Receipt Banner -->

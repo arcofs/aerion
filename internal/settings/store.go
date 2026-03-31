@@ -18,6 +18,7 @@ const (
 	KeyMarkAsReadDelay           = "mark_as_read_delay"
 	KeyMessageListDensity        = "message_list_density"
 	KeyMessageListSortOrder      = "message_list_sort_order"
+	KeyMessageListMode           = "message_list_mode"
 	KeyThemeMode                 = "theme_mode"
 	KeyShowTitleBar              = "show_title_bar"
 	KeyTermsAccepted             = "terms_accepted"
@@ -51,6 +52,15 @@ const (
 
 // DefaultMessageListSortOrder is the default sort order
 const DefaultMessageListSortOrder = SortOrderNewest
+
+// Message list mode values
+const (
+	MessageListModeConversation = "conversation"
+	MessageListModeIndividual   = "individual"
+)
+
+// DefaultMessageListMode is the default message list mode
+const DefaultMessageListMode = MessageListModeConversation
 
 // Theme mode values
 const (
@@ -228,6 +238,26 @@ func (s *Store) SetMessageListSortOrder(sortOrder string) error {
 		return fmt.Errorf("invalid sort order: %s (must be 'newest' or 'oldest')", sortOrder)
 	}
 	return s.Set(KeyMessageListSortOrder, sortOrder)
+}
+
+// GetMessageListMode returns the current message list mode
+func (s *Store) GetMessageListMode() (string, error) {
+	value, err := s.Get(KeyMessageListMode)
+	if err != nil {
+		return DefaultMessageListMode, err
+	}
+	if value == "" {
+		return DefaultMessageListMode, nil
+	}
+	return value, nil
+}
+
+// SetMessageListMode sets the message list mode
+func (s *Store) SetMessageListMode(mode string) error {
+	if mode != MessageListModeConversation && mode != MessageListModeIndividual {
+		return fmt.Errorf("invalid message list mode: %s (must be 'conversation' or 'individual')", mode)
+	}
+	return s.Set(KeyMessageListMode, mode)
 }
 
 // GetThemeMode returns the current theme mode setting
