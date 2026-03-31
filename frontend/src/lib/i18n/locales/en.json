@@ -147,6 +147,7 @@
     "cc": "cc",
     "bcc": "bcc",
     "replyTo": "reply-to",
+    "repliedToMessage": "You replied to this email",
     "from": "From",
     "date": "Date",
     "subject": "Subject",

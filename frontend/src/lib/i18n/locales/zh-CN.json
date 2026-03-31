@@ -147,6 +147,7 @@
     "cc": "抄送",
     "bcc": "密送",
     "replyTo": "回复至",
+    "repliedToMessage": "您已回复此邮件",
     "from": "发件人",
     "date": "日期",
     "subject": "主题",

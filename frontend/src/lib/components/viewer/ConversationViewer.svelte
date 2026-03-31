@@ -2,13 +2,13 @@
   import { onMount, onDestroy, tick } from 'svelte'
   import Icon from '@iconify/svelte'
   // @ts-ignore - wailsjs bindings
-  import { GetConversation, GetReadReceiptResponsePolicy, SendReadReceipt, IgnoreReadReceipt, GetMarkAsReadDelay, GetMessageSource, ProcessSMIMEMessage, ProcessPGPMessage } from '../../../../wailsjs/go/app/App'
+  import { GetConversation, GetIdentities, GetReadReceiptResponsePolicy, SendReadReceipt, IgnoreReadReceipt, GetMarkAsReadDelay, GetMessageSource, ProcessSMIMEMessage, ProcessPGPMessage } from '../../../../wailsjs/go/app/App'
   // @ts-ignore - wailsjs bindings
   import { MarkAsRead, MarkAsUnread, Star, Unstar, Archive, Trash, MarkAsSpam, MarkAsNotSpam, DeletePermanently, Undo } from '../../../../wailsjs/go/app/App'
   // @ts-ignore - wailsjs path
   import { EventsOn, EventsOff } from '../../../../wailsjs/runtime/runtime'
   // @ts-ignore - wailsjs path
-  import { message as messageModels } from '../../../../wailsjs/go/models'
+  import { account as accountModels, message as messageModels } from '../../../../wailsjs/go/models'
   import AttachmentList from './AttachmentList.svelte'
   import EmailBody from './EmailBody.svelte'
   import { toasts } from '$lib/stores/toast'
@@ -100,6 +100,7 @@
 
   // Track which messages are expanded (unread messages auto-expand)
   let expandedMessages = $state<Set<string>>(new Set())
+  let ownIdentityEmails = $state<Set<string>>(new Set())
 
   // Track focused message for keyboard deletion
   let focusedMessageId = $state<string | null>(null)
@@ -139,6 +140,41 @@
     return [...messages.slice(selectedIndex), ...messages.slice(0, selectedIndex)]
   })
 
+  const repliedMessageIds = $derived.by(() => {
+    const messages = conversation?.messages || []
+    if (messages.length === 0 || ownIdentityEmails.size === 0) {
+      return new Set<string>()
+    }
+
+    const replied = new Set<string>()
+    const targets = new Map<string, string>()
+
+    for (const msg of messages) {
+      const normalizedMessageID = normalizeMessageID(msg.messageId)
+      if (normalizedMessageID) {
+        targets.set(normalizedMessageID, msg.id)
+      }
+    }
+
+    for (const msg of messages) {
+      if (msg.isDraft || !isOwnIdentityMessage(msg)) {
+        continue
+      }
+
+      const replyTarget = getDirectReplyTargetMessageID(msg)
+      if (!replyTarget) {
+        continue
+      }
+
+      const repliedMessageId = targets.get(replyTarget)
+      if (repliedMessageId) {
+        replied.add(repliedMessageId)
+      }
+    }
+
+    return replied
+  })
+
   function getExpandedMessageSet(messages: messageModels.Message[]): Set<string> {
     if (flatConversationView) {
       return new Set(messages.map((m) => m.id))
@@ -151,6 +187,64 @@
       }
     })
     return expanded
+  }
+
+  function normalizeMessageID(value?: string | null): string {
+    return (value || '').trim().replace(/^<|>$/g, '')
+  }
+
+  function parseReferenceList(references?: string | null): string[] {
+    if (!references) return []
+
+    try {
+      const parsed = JSON.parse(references)
+      if (!Array.isArray(parsed)) return []
+      return parsed
+        .map((value) => normalizeMessageID(typeof value === 'string' ? value : ''))
+        .filter(Boolean)
+    } catch {
+      return []
+    }
+  }
+
+  function getDirectReplyTargetMessageID(msg: messageModels.Message): string {
+    const inReplyTo = normalizeMessageID(msg.inReplyTo)
+    if (inReplyTo) {
+      return inReplyTo
+    }
+
+    const references = parseReferenceList(msg.references)
+    return references[references.length - 1] || ''
+  }
+
+  function isOwnIdentityMessage(msg: messageModels.Message): boolean {
+    return ownIdentityEmails.has((msg.fromEmail || '').trim().toLowerCase())
+  }
+
+  function hasReplyIndicator(msg: messageModels.Message): boolean {
+    return msg.isAnswered || repliedMessageIds.has(msg.id)
+  }
+
+  async function loadOwnIdentityEmails(currentAccountId?: string | null) {
+    if (!currentAccountId) {
+      ownIdentityEmails = new Set()
+      return
+    }
+
+    try {
+      const identities = await GetIdentities(currentAccountId)
+      const emails = new Set<string>()
+      for (const identity of identities as accountModels.Identity[]) {
+        const email = (identity.email || '').trim().toLowerCase()
+        if (email) {
+          emails.add(email)
+        }
+      }
+      ownIdentityEmails = emails
+    } catch (err) {
+      console.error('Failed to load identities:', err)
+      ownIdentityEmails = new Set()
+    }
   }
 
   async function focusSelectedMessage(behavior: ScrollBehavior = 'smooth') {
@@ -451,6 +545,7 @@
       // Something changed — update conversation, preserving scroll position
       const scrollTop = contentContainerRef?.scrollTop ?? 0
       conversation = updated
+      await loadOwnIdentityEmails(accountId || updated?.accountId || updated?.messages?.[0]?.accountId)
 
       // Expand any new unread messages
       if (conversation.messages) {
@@ -486,6 +581,7 @@
       if (threadId !== tid) return
 
       conversation = result
+      await loadOwnIdentityEmails(accountId || result?.accountId || result?.messages?.[0]?.accountId)
 
       // Auto-expand unread messages and the last message
       if (conversation?.messages) {
@@ -1368,6 +1464,13 @@
                         <span class="w-2 h-2 rounded-full bg-primary flex-shrink-0"></span>
                       {/if}
                     </div>
+
+                    {#if hasReplyIndicator(msg)}
+                      <div class="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200">
+                        <Icon icon="mdi:reply" class="h-3.5 w-3.5 flex-shrink-0" />
+                        <span>{$_('viewer.repliedToMessage')}</span>
+                      </div>
+                    {/if}
 
                     {#if msg.replyTo && msg.replyTo.toLowerCase() !== msg.fromEmail.toLowerCase()}
                       <div class="text-sm text-muted-foreground flex flex-wrap items-center gap-1">

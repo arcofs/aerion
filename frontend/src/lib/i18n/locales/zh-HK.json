@@ -147,6 +147,7 @@
     "cc": "副本",
     "bcc": "密件副本",
     "replyTo": "回覆至",
+    "repliedToMessage": "你已回覆此電郵",
     "from": "寄件人",
     "date": "日期",
     "subject": "主旨",
