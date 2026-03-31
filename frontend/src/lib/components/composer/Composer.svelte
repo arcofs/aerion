@@ -39,12 +39,12 @@
     textMentionsAttachment,
   } from './composerUtils'
   import {
-    SIGNATURE_MARKER,
     buildSignatureHtml,
     shouldAppendSignature,
     insertSignatureIntoContent,
     removeSignatureFromContent,
     hasSignatureMarker,
+    stripSignatureMarkers,
     type ComposeMode,
   } from './composerSignature'
   import * as Select from '$lib/components/ui/select'
@@ -422,7 +422,7 @@
       // In rich text mode, we have both
       // Add inline margin:0 to paragraphs for single-spacing in recipients' email clients,
       // then convert data URLs to CID references for inline images
-      htmlContent = convertDataUrlsToCid(addParagraphStyles(editor?.getHTML() || ''))
+      htmlContent = convertDataUrlsToCid(addParagraphStyles(stripSignatureMarkers(editor?.getHTML() || '')))
       textContent = editor?.getText() || ''
     }
 

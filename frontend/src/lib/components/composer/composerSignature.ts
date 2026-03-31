@@ -14,7 +14,34 @@ export type ComposeMode = 'new' | 'reply' | 'reply-all' | 'forward'
  * Using three zero-width spaces as an invisible marker that TipTap preserves in text nodes
  */
 export const SIGNATURE_MARKER = '\u200B\u200B\u200B'
-export const SIGNATURE_MARKER_REGEX = /\u200B\u200B\u200B[\s\S]*$/
+
+function findQuotedContentStart(content: string): number {
+  const wroteMatch = content.match(/wrote:\s*(<br[^>]*>)?\s*<\/p>/i)
+  if (wroteMatch && wroteMatch.index !== undefined) {
+    const before = content.substring(0, wroteMatch.index)
+    const pStart = before.lastIndexOf('<p')
+    if (pStart > -1) {
+      return pStart
+    }
+  }
+
+  return content.indexOf('<blockquote')
+}
+
+function splitComposerAndQuotedContent(content: string): { composerContent: string; quotedContent: string } {
+  const quotedStart = findQuotedContentStart(content)
+  if (quotedStart > -1) {
+    return {
+      composerContent: content.substring(0, quotedStart),
+      quotedContent: content.substring(quotedStart),
+    }
+  }
+
+  return {
+    composerContent: content,
+    quotedContent: '',
+  }
+}
 
 /**
  * Build signature HTML from identity settings
@@ -75,26 +102,10 @@ export function insertSignatureIntoContent(
   placement: string = 'above'
 ): string {
   if (placement === 'above') {
-    // Look for a citation line ("On DATE, SENDER wrote:") to insert signature above it.
-    // Search for "wrote:" followed by optional <br> and closing </p> tag.
-    // This works regardless of compose mode or whether TipTap preserves blockquotes.
-    const wroteMatch = content.match(/wrote:\s*(<br[^>]*>)?\s*<\/p>/i)
-    if (wroteMatch && wroteMatch.index !== undefined) {
-      const before = content.substring(0, wroteMatch.index)
-      const pStart = before.lastIndexOf('<p')
-      if (pStart > -1) {
-        const quotedContent = content.substring(pStart)
-        // typing area + blank line below content + signature + 2 blank lines before citation
-        return '<p></p><p></p>' + signatureHtml + '<p></p><p></p>' + quotedContent
-      }
-    }
-
-    // Fallback: try blockquote
-    const blockquoteIndex = content.indexOf('<blockquote')
-    if (blockquoteIndex > -1) {
-      const blockquote = content.substring(blockquoteIndex)
+    const { quotedContent } = splitComposerAndQuotedContent(content)
+    if (quotedContent) {
       // typing area + blank line below content + signature + 2 blank lines before citation
-      return '<p></p><p></p>' + signatureHtml + '<p></p><p></p>' + blockquote
+      return '<p></p><p></p>' + signatureHtml + '<p></p><p></p>' + quotedContent
     }
   }
 
@@ -111,8 +122,16 @@ export function insertSignatureIntoContent(
  * Remove signature from content using the marker
  */
 export function removeSignatureFromContent(content: string): string {
-  // Remove everything from the signature marker to the end
-  let result = content.replace(SIGNATURE_MARKER_REGEX, '')
+  const { composerContent, quotedContent } = splitComposerAndQuotedContent(content)
+  const markerIndex = composerContent.indexOf(SIGNATURE_MARKER)
+  let result = content
+
+  if (markerIndex > -1) {
+    result = composerContent.substring(0, markerIndex) + quotedContent
+  }
+
+  // Strip any leaked markers without removing quoted history.
+  result = stripSignatureMarkers(result)
   // Clean up trailing <br> tags that were before the signature
   result = result.replace(/(<br\s*\/?>)+\s*$/, '')
   return result
@@ -122,5 +141,13 @@ export function removeSignatureFromContent(content: string): string {
  * Check if content already contains a signature marker
  */
 export function hasSignatureMarker(content: string): boolean {
-  return content.includes(SIGNATURE_MARKER)
+  const { composerContent } = splitComposerAndQuotedContent(content)
+  return composerContent.includes(SIGNATURE_MARKER)
+}
+
+/**
+ * Strip internal signature markers before persisting/sending content
+ */
+export function stripSignatureMarkers(content: string): string {
+  return content.replaceAll(SIGNATURE_MARKER, '')
 }
