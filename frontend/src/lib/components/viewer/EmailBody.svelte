@@ -29,6 +29,7 @@
 
   // Inline attachment state
   let inlineAttachments = $state<Record<string, string>>({})
+  let inlineAttachmentsLoaded = $state(false)
   let lastSentMessageId = $state<string | null>(null)
 
   // Link tooltip state
@@ -50,6 +51,10 @@
   const CSS_QUOTE = `(?:['"]|&#(?:39|x27|34|x22);|&(?:apos|quot);)?`
   const CSS_REMOTE_URL_PATTERN = `url\\(\\s*${CSS_QUOTE}\\s*https?://[^)]*?${CSS_QUOTE}\\s*\\)`
 
+  function normalizeCid(contentId: string): string {
+    return contentId.trim().replace(/^<+|>+$/g, '')
+  }
+
   function checkForRemoteImages(html: string): boolean {
     if (!html) return false
     // Check <img> tags with remote src
@@ -65,7 +70,7 @@
     if (!html) return html
     return html.replace(
       /src=["']cid:([^"']+)["']/gi,
-      (match, contentId) => `src="${loadingPlaceholder}" data-cid="${contentId}"`
+      (match, contentId) => `src="${loadingPlaceholder}" data-cid="${normalizeCid(contentId)}"`
     )
   }
 
@@ -112,6 +117,18 @@
           }
         });
       }
+
+      function markMissingInlineImages() {
+        var missingPlaceholder = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='80' viewBox='0 0 120 80'%3E%3Crect fill='%23f3f4f6' width='120' height='80' rx='4'/%3E%3Cpath d='M38 28h44v24H38z' fill='none' stroke='%239ca3af' stroke-width='2'/%3E%3Cpath d='M44 46l10-10 8 8 6-6 8 8' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='50' cy='36' r='3' fill='%239ca3af'/%3E%3Ctext x='60' y='66' text-anchor='middle' fill='%239ca3af' font-size='9' font-family='sans-serif'%3EImage unavailable%3C/text%3E%3C/svg%3E";
+        document.querySelectorAll('img[data-cid]').forEach(function(img) {
+          img.src = missingPlaceholder;
+          img.removeAttribute('data-cid');
+          img.setAttribute('data-inline-missing', 'true');
+        });
+        attachImageHandlers();
+        setTimeout(sendHeight, 50);
+        setTimeout(sendHeight, 150);
+      }
       
       window.addEventListener('message', function(e) {
         if (e.data?.type === 'select-all') {
@@ -128,12 +145,11 @@
           var images = e.data.images;
           var replaced = 0;
           Object.keys(images).forEach(function(cid) {
-            var img = document.querySelector('img[data-cid="' + cid + '"]');
-            if (img) {
+            document.querySelectorAll('img[data-cid="' + cid + '"]').forEach(function(img) {
               img.src = images[cid];
               img.removeAttribute('data-cid');
               replaced++;
-            }
+            });
           });
           if (replaced > 0) {
             attachImageHandlers();
@@ -141,6 +157,10 @@
             setTimeout(sendHeight, 150);
             setTimeout(sendHeight, 300);
           }
+          return;
+        }
+        if (e.data?.type === 'inline-images-missing') {
+          markMissingInlineImages();
         }
       });
 
@@ -423,6 +443,7 @@ ${processedHtml}
     iframeReady = false
     lastSentMessageId = null
     inlineAttachments = {}
+    inlineAttachmentsLoaded = !hasCidReferences
     imagesBlocked = true
 
     if (!hasImages) return
@@ -445,12 +466,14 @@ ${processedHtml}
     const encInline = encryptedInlineAttachments
 
     if (!id || !hasCid) {
+      inlineAttachmentsLoaded = true
       return
     }
 
     // For encrypted messages, use the in-memory inline attachments from decryption
     if (encInline && Object.keys(encInline).length > 0) {
       inlineAttachments = encInline
+      inlineAttachmentsLoaded = true
       return
     }
 
@@ -458,8 +481,11 @@ ${processedHtml}
     const cached = getCached(id)
     if (cached && Object.keys(cached).length > 0) {
       inlineAttachments = cached
+      inlineAttachmentsLoaded = true
       return
     }
+
+    inlineAttachmentsLoaded = false
 
     GetInlineAttachments(id)
       .then((result: Record<string, string>) => {
@@ -468,9 +494,11 @@ ${processedHtml}
         if (Object.keys(data).length > 0) {
           setCache(id, data)
         }
+        inlineAttachmentsLoaded = true
       })
       .catch((err: Error) => {
         console.error('[EmailBody] Fetch error:', err)
+        inlineAttachmentsLoaded = true
       })
   })
 
@@ -491,11 +519,23 @@ ${processedHtml}
   $effect(() => {
     const ready = iframeReady
     const images = inlineAttachments
+    const loaded = inlineAttachmentsLoaded
     const id = messageId
     const alreadySent = lastSentMessageId === id
+    const hasCid = hasCidReferences
 
-    if (ready && Object.keys(images).length > 0 && !alreadySent) {
+    if (!ready || alreadySent) {
+      return
+    }
+
+    if (Object.keys(images).length > 0) {
       sendInlineImagesToIframe(images)
+      lastSentMessageId = id
+      return
+    }
+
+    if (loaded && hasCid) {
+      iframeElement?.contentWindow?.postMessage({ type: 'inline-images-missing' }, '*')
       lastSentMessageId = id
     }
   })
